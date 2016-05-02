@@ -108,7 +108,7 @@
         "TermsOfServiceLink": "/static/help/terms.html",
         "PrivacyPolicyLink": "/static/help/privacy.html",
         "AboutLink": "/static/help/about.html",
-        "HelpLink": "/static/help/help.html",
+        "HelpLink": "http://docs.mattermost.com/",
         "ReportAProblemLink": "/static/help/report_problem.html",
         "SupportEmail": "feedback@mattermost.com"
     },
