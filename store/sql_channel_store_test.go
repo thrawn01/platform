@@ -4,9 +4,11 @@
 package store
 
 import (
-	"github.com/mattermost/platform/model"
+	"fmt"
 	"testing"
 	"time"
+
+	"github.com/mattermost/platform/model"
 )
 
 func TestChannelStoreSave(t *testing.T) {
@@ -40,7 +42,7 @@ func TestChannelStoreSave(t *testing.T) {
 		t.Fatal("Should not be able to save direct channel")
 	}
 
-	o1.Type = model.CHANNEL_OPEN
+	/*o1.Type = model.CHANNEL_OPEN
 	for i := 0; i < 1000; i++ {
 		o1.Id = ""
 		o1.Name = "a" + model.NewId() + "b"
@@ -53,7 +55,7 @@ func TestChannelStoreSave(t *testing.T) {
 	o1.Name = "a" + model.NewId() + "b"
 	if err := (<-store.Channel().Save(&o1)).Err; err == nil {
 		t.Fatal("should be the limit")
-	}
+	}*/
 }
 
 func TestChannelStoreSaveDirectChannel(t *testing.T) {
@@ -141,7 +143,7 @@ func TestChannelStoreUpdate(t *testing.T) {
 	}
 }
 
-func TestChannelStoreGet(t *testing.T) {
+func TestChannelStoreGetThrawn(t *testing.T) {
 	Setup()
 
 	o1 := model.Channel{}
@@ -196,6 +198,8 @@ func TestChannelStoreGet(t *testing.T) {
 	if r2 := <-store.Channel().Get(o2.Id); r2.Err != nil {
 		t.Fatal(r2.Err)
 	} else {
+		fmt.Printf("'%s'\n", r2.Data.(*model.Channel).ToJson())
+		fmt.Printf("'%s'\n", o2.ToJson())
 		if r2.Data.(*model.Channel).ToJson() != o2.ToJson() {
 			t.Fatal("invalid returned channel")
 		}
@@ -257,18 +261,33 @@ func TestChannelStoreDelete(t *testing.T) {
 		t.Fatal(r.Err)
 	}
 
-	cresult := <-store.Channel().GetChannels(o1.TeamId, m1.UserId)
-	list := cresult.Data.(*model.ChannelList)
+	var list *model.ChannelList
+	if r := <-store.Channel().GetChannels(o1.TeamId, m1.UserId); r.Err != nil {
+		t.Fatal(r.Err)
+	} else {
+		list = r.Data.(*model.ChannelList)
+	}
 
 	if len(list.Channels) != 1 {
 		t.Fatal("invalid number of channels")
 	}
 
-	cresult = <-store.Channel().GetMoreChannels(o1.TeamId, m1.UserId)
-	list = cresult.Data.(*model.ChannelList)
+	if list.Channels[0].Id != o2.Id {
+		t.Fatal("Wrong Channel")
+	}
+
+	if r := <-store.Channel().GetMoreChannels(o1.TeamId, m1.UserId); r.Err != nil {
+		t.Fatal(r.Err)
+	} else {
+		list = r.Data.(*model.ChannelList)
+	}
 
 	if len(list.Channels) != 1 {
 		t.Fatal("invalid number of channels")
+	}
+
+	if list.Channels[0].Id != o4.Id {
+		t.Fatal("Wrong Channel")
 	}
 }
 
@@ -734,6 +753,7 @@ func TestChannelStoreUpdateLastViewedAt(t *testing.T) {
 		t.Fatal("failed to update", err)
 	}
 
+	// TODO thrawn - This seams broken, shouldn't it return an error if it can't update the last viewed at?
 	err = (<-store.Channel().UpdateLastViewedAt(m1.ChannelId, "missing id")).Err
 	if err != nil {
 		t.Fatal("failed to update")

@@ -153,8 +153,10 @@ func LoadConfig(fileName string) {
 	config := model.Config{}
 	err = decoder.Decode(&config)
 	if err != nil {
-		panic(T("utils.config.load_config.decoding.panic",
-			map[string]interface{}{"Filename": fileName, "Error": err.Error()}))
+		fmt.Print(err.Error())
+		res := T("utils.config.load_config.decoding.panic",
+			map[string]interface{}{"Filename": fileName, "Error": err.Error()})
+		panic(res)
 	}
 
 	if info, err := file.Stat(); err != nil {

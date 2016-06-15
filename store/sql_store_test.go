@@ -17,7 +17,11 @@ func Setup() {
 	if store == nil {
 		utils.LoadConfig("config.json")
 		utils.InitTranslations(utils.Cfg.LocalizationSettings)
-		store = NewSqlStore()
+		if utils.Cfg.RethinkSettings.Enabled {
+			store = NewRethinkStore()
+		} else {
+			store = NewSqlStore()
+		}
 
 		store.MarkSystemRanUnitTests()
 	}

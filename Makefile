@@ -96,6 +96,15 @@ start-docker:
 		sleep 10; \
 	fi
 
+	@# TODO Use a docker image that allows us to set the user/password and not require a local data directory
+	@if [ $(shell docker ps -a | grep -ci mattermost-rethinkdb) -eq 0 ]; then \
+		echo starting mattermost-rethinkdb; \
+		docker run --name mattermost-rethinkdb -v "/Users/thrawn/rethinkdb_data:/data" -p 8080:8080 -p 28015:28015 -d rethinkdb:latest; \
+	elif [ $(shell docker ps | grep -ci mattermost-rethinkdb) -eq 0 ]; then \
+		echo restarting mattermost-rethinkdb; \
+		docker start mattermost-rethinkdb > /dev/null; \
+	fi
+
 stop-docker:
 	@echo Stopping docker containers
 
@@ -112,6 +121,11 @@ stop-docker:
 	@if [ $(shell docker ps -a | grep -ci mattermost-openldap) -eq 1 ]; then \
 		echo stopping mattermost-openldap; \
 		docker stop mattermost-openldap > /dev/null; \
+	fi
+
+	@if [ $(shell docker ps -a | grep -ci mattermost-rethinkdb) -eq 1 ]; then \
+		echo stopping mattermost-rethinkdb; \
+		docker stop mattermost-rethinkdb > /dev/null; \
 	fi
 
 clean-docker:

@@ -48,6 +48,9 @@ export function initialize() {
         conn.onopen = () => {
             if (connectFailCount > 0) {
                 console.log('websocket re-established connection'); //eslint-disable-line no-console
+                // TODO: thrawn01 - This appears to be racy, getPosts() should be called only after
+                // TODO: getChannels() has returned and the CurrentId is updated
+                // AsyncClient.getChannelsAndPosts(); <-- would call both one after another asynchronously 
                 AsyncClient.getChannels();
                 AsyncClient.getPosts(ChannelStore.getCurrentId());
             }

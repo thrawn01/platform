@@ -4,9 +4,10 @@
 package store
 
 import (
-	"github.com/mattermost/platform/model"
 	"strconv"
 	"strings"
+
+	"github.com/mattermost/platform/model"
 )
 
 type SqlComplianceStore struct {

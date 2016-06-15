@@ -4,16 +4,17 @@
 package api
 
 import (
-	"github.com/gorilla/websocket"
-	"github.com/mattermost/platform/model"
-	"github.com/mattermost/platform/utils"
 	"net/http"
 	"testing"
 	"time"
+
+	"github.com/gorilla/websocket"
+	"github.com/mattermost/platform/model"
+	"github.com/mattermost/platform/utils"
 )
 
 func TestSocket(t *testing.T) {
-	th := Setup().InitBasic()
+	th := Setup().InitRethink().InitBasic()
 	Client := th.BasicClient
 	team := th.BasicTeam
 	channel1 := th.BasicChannel

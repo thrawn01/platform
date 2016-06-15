@@ -459,6 +459,8 @@ func (s SqlUserStore) GetEtagForDirectProfiles(userId string) StoreChannel {
 	go func() {
 		result := StoreResult{}
 
+		// Get the UpdateAt for all users that this userId is in a direct channel with or
+		// the user has the 'direct_channel_show' preference set
 		updateAt, err := s.GetReplica().SelectInt(`
 			SELECT
 			    UpdateAt

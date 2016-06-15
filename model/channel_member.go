@@ -20,6 +20,7 @@ const (
 )
 
 type ChannelMember struct {
+	Id           string    `json:"id"`
 	ChannelId    string    `json:"channel_id"`
 	UserId       string    `json:"user_id"`
 	Roles        string    `json:"roles"`
@@ -52,6 +53,10 @@ func ChannelMemberFromJson(data io.Reader) *ChannelMember {
 
 func (o *ChannelMember) IsValid() *AppError {
 
+	if len(o.Id) != 26 {
+		return NewLocAppError("ChannelMember.IsValid", "model.channel_member.is_valid.id.app_error", nil, "")
+	}
+
 	if len(o.ChannelId) != 26 {
 		return NewLocAppError("ChannelMember.IsValid", "model.channel_member.is_valid.channel_id.app_error", nil, "")
 	}
@@ -82,6 +87,9 @@ func (o *ChannelMember) IsValid() *AppError {
 }
 
 func (o *ChannelMember) PreSave() {
+	if o.Id == "" {
+		o.Id = NewId()
+	}
 	o.LastUpdateAt = GetMillis()
 }
 

@@ -5,6 +5,7 @@ package api
 
 import (
 	l4g "github.com/alecthomas/log4go"
+	rethink "github.com/dancannon/gorethink"
 	"github.com/mattermost/platform/model"
 	"github.com/mattermost/platform/utils"
 )
@@ -17,6 +18,7 @@ type Hub struct {
 	stop              chan string
 	invalidateUser    chan string
 	invalidateChannel chan string
+	rethink           *rethink.Session
 }
 
 var hub = &Hub{
@@ -27,10 +29,20 @@ var hub = &Hub{
 	stop:              make(chan string),
 	invalidateUser:    make(chan string),
 	invalidateChannel: make(chan string),
+	rethink:           nil,
 }
 
+// TODO: This should return an error if we are unable to put the message in the hub table
+// TODO: Or should this queue up the messages until the hub table has been restored?
 func Publish(message *model.Message) {
-	hub.Broadcast(message)
+	// TODO: Thrawn - This should send the message to rethinkdb instead of placing the message on the
+	// TODO: broadcast channel. Messages should arrive on the broadcast channel via rethinkdb event listeners
+	l4g.Debug("api.web_hub.PublishAndForget.rethinkdb.insert %s", message.ToJson())
+	_, err := rethink.DB(utils.Cfg.RethinkSettings.Database).
+		Table(utils.Cfg.RethinkSettings.HubTable).Insert(message).RunWrite(hub.rethink)
+	if err != nil {
+		l4g.Error("api.web_hub.PublishAndForget.rethinkdb %s", err.Error())
+	}
 }
 
 func InvalidateCacheForUser(userId string) {
@@ -82,7 +94,8 @@ func (h *Hub) Start() {
 				for webCon := range h.connections {
 					webCon.InvalidateCacheForChannel(channelId)
 				}
-
+			// TODO: Thrawn - Broadcast events should come from a go routine that watches for events from
+			// TODO: rethinkdb. This should decouple the hub from any central server
 			case msg := <-h.broadcast:
 				for webCon := range h.connections {
 					if shouldSendEvent(webCon, msg) {

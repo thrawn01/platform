@@ -49,8 +49,10 @@ func SetupEnterprise() *TestHelper {
 
 func Setup() *TestHelper {
 	if Srv == nil {
-		utils.LoadConfig("config.json")
+		// TODO: thrawn01 - Make PR to fix this, InitTranslations() should come before
+		// LoadConfig() or it will panic if LoadConfig() panics
 		utils.InitTranslations(utils.Cfg.LocalizationSettings)
+		utils.LoadConfig("config.json")
 		utils.Cfg.TeamSettings.MaxUsersPerTeam = 50
 		utils.DisableDebugLogForTest()
 		NewServer()

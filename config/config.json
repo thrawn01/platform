@@ -48,6 +48,15 @@
         "Trace": false,
         "AtRestEncryptKey": "7rAh6iwQCkV4cA1Gsg3fgGOXJAQ43QVg"
     },
+    "RethinkSettings": {
+        "Database": "mattermost",
+        "HubTable": "hub",
+        "Username": "mmuser",
+        "Password": "mmpass",
+        "Addresses": ["dockerhost:28015"],
+        "Trace": false,
+        "Enabled": true
+    },
     "LogSettings": {
         "EnableConsole": true,
         "ConsoleLevel": "DEBUG",

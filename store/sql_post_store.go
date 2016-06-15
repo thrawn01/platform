@@ -183,11 +183,6 @@ func (s SqlPostStore) Get(id string) StoreChannel {
 	return storeChannel
 }
 
-type etagPosts struct {
-	Id       string
-	UpdateAt int64
-}
-
 func (s SqlPostStore) GetEtag(channelId string) StoreChannel {
 	storeChannel := make(StoreChannel)
 

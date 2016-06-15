@@ -87,6 +87,16 @@ type SqlSettings struct {
 	AtRestEncryptKey   string
 }
 
+type RethinkSettings struct {
+	Database  string
+	HubTable  string
+	Username  string
+	Password  string
+	Addresses []string
+	Trace     bool
+	Enabled   bool
+}
+
 type LogSettings struct {
 	EnableConsole          bool
 	ConsoleLevel           string
@@ -223,6 +233,7 @@ type Config struct {
 	ServiceSettings      ServiceSettings
 	TeamSettings         TeamSettings
 	SqlSettings          SqlSettings
+	RethinkSettings      RethinkSettings
 	LogSettings          LogSettings
 	FileSettings         FileSettings
 	EmailSettings        EmailSettings
