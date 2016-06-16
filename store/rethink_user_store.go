@@ -6,6 +6,7 @@ import (
 
 	rethink "github.com/dancannon/gorethink"
 	"github.com/mattermost/platform/model"
+	"github.com/mattermost/platform/utils"
 )
 
 type RethinkUserStore struct {
@@ -92,7 +93,6 @@ func (us RethinkUserStore) Save(user *model.User) StoreChannel {
 			storeChannel <- result
 			close(storeChannel)
 			return
-
 		}
 		defer func() { dLock.UnLock("newUser") }()
 
@@ -442,7 +442,7 @@ func (us RethinkUserStore) UpdateFailedPasswordAttempts(userId string, attempts 
 	return storeChannel
 }
 
-func (us RethinkUserStore) UpdateAuthData(userId, service, authData, email string) StoreChannel {
+func (self RethinkUserStore) UpdateAuthData(userId, service, authData, email string) StoreChannel {
 
 	storeChannel := make(StoreChannel)
 
@@ -465,11 +465,32 @@ func (us RethinkUserStore) UpdateAuthData(userId, service, authData, email strin
 		}
 
 		if len(email) != 0 {
+			err := dLock.Lock("newUser")
+			if err != nil {
+				result.Err = model.NewLocAppError("RethinkUserStore.UpdateAuthData",
+					"store.sql_user.lock.app_error", nil, err.Error())
+				storeChannel <- result
+				close(storeChannel)
+				return
+			}
+			defer func() { dLock.UnLock("newUser") }()
+
 			update["Email"] = email
+			user, err := self._get(userId)
+			if err != nil {
+				result.Err = err
+				return
+			}
+			if err := self.validEmailAndUsername(user); err != nil {
+				result.Err = err
+				storeChannel <- result
+				close(storeChannel)
+				return
+			}
 		}
 
 		changed, err := rethink.Table("Users").Get(userId).
-			Update(update).RunWrite(us.rethink, runOpts)
+			Update(update).RunWrite(self.rethink, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkUserStore.UpdateAuthData",
 				"store.sql_user.update_auth_data.app_error", nil, "id="+userId+", "+err.Error())
@@ -554,25 +575,26 @@ func (us RethinkUserStore) UpdateMfaActive(userId string, active bool) StoreChan
 	return storeChannel
 }
 
-func (us RethinkUserStore) Get(id string) StoreChannel {
+func (self RethinkUserStore) _get(id string) (*model.User, error) {
+
+	user := model.User{}
+	cursor, err := rethink.Table("Users").Get(id).Run(self.rethink, runOpts)
+	if err != nil {
+		return nil, model.NewLocAppError("RethinkUserStore.Get",
+			"store.sql_user.get.app_error", nil, "user_id="+id+", "+err.Error())
+	} else if cursor.IsNil() {
+		return nil, model.NewLocAppError("RethinkUserStore.Get",
+			"store.sql_user.missing_account.const", nil, "user_id="+id)
+	}
+	return &user
+}
+
+func (self RethinkUserStore) Get(id string) StoreChannel {
 
 	storeChannel := make(StoreChannel)
 
 	go func() {
-		result := StoreResult{}
-
-		user := model.User{}
-		cursor, err := rethink.Table("Users").Get(id).Run(us.rethink, runOpts)
-		if err != nil {
-			result.Err = model.NewLocAppError("RethinkUserStore.Get",
-				"store.sql_user.get.app_error", nil, "user_id="+id+", "+err.Error())
-		} else if cursor.IsNil() {
-			result.Err = model.NewLocAppError("RethinkUserStore.Get",
-				"store.sql_user.missing_account.const", nil, "user_id="+id)
-		} else {
-			result.Data = &user
-		}
-
+		result := StoreResult{self._get(id)}
 		storeChannel <- result
 		close(storeChannel)
 
@@ -664,9 +686,9 @@ func (s RethinkUserStore) GetEtagForDirectProfiles(userId string) StoreChannel {
 					ORDER BY UpdateAt DESC
 		        `, map[string]interface{}{"UserId": userId})
 				if err != nil {
-					result.Data = fmt.Sprintf("%v.%v", model.CurrentVersion, model.GetMillis())
+					result.Data = fmt.Sprintf("%v.%v.%v.%v", model.CurrentVersion, model.GetMillis(), utils.Cfg.PrivacySettings.ShowFullName, utils.Cfg.PrivacySettings.ShowEmailAddress)
 				} else {
-					result.Data = fmt.Sprintf("%v.%v", model.CurrentVersion, updateAt)
+					result.Data = fmt.Sprintf("%v.%v.%v.%v", model.CurrentVersion, updateAt, utils.Cfg.PrivacySettings.ShowFullName, utils.Cfg.PrivacySettings.ShowEmailAddress)
 				}*/
 
 		storeChannel <- result
@@ -690,12 +712,14 @@ func (self RethinkUserStore) GetEtagForAllProfiles() StoreChannel {
 			result.Err = model.NewLocAppError("RethinkUserStore.GetEtagForAllProfiles",
 				"store.sql_user.get_profiles.app_error", nil, err.Error())
 		} else if cursor.IsNil() {
-			result.Data = fmt.Sprintf("%v.%v", model.CurrentVersion, model.GetMillis())
+			result.Data = fmt.Sprintf("%v.%v.%v.%v", model.CurrentVersion, model.GetMillis(),
+				utils.Cfg.PrivacySettings.ShowFullName, utils.Cfg.PrivacySettings.ShowEmailAddress)
 		} else if err := cursor.One(&updateAt); err != nil {
 			result.Err = model.NewLocAppError("RethinkUserStore.GetEtagForAllProfiles",
 				"store.sql_user.get_profiles.cursor.app_error", nil, err.Error())
 		} else {
-			result.Data = fmt.Sprintf("%v.%v", model.CurrentVersion, updateAt)
+			result.Data = fmt.Sprintf("%v.%v.%v.%v", model.CurrentVersion, updateAt,
+				utils.Cfg.PrivacySettings.ShowFullName, utils.Cfg.PrivacySettings.ShowEmailAddress)
 		}
 
 		storeChannel <- result
@@ -756,12 +780,14 @@ func (s RethinkUserStore) GetEtagForProfiles(teamId string) StoreChannel {
 			result.Err = model.NewLocAppError("RethinkUserStore.GetEtagForProfiles",
 				"store.sql_user.get_profiles.app_error", nil, err.Error())
 		} else if cursor.IsNil() {
-			result.Data = fmt.Sprintf("%v.%v", model.CurrentVersion, model.GetMillis())
+			result.Data = fmt.Sprintf("%v.%v.%v.%v", model.CurrentVersion, model.GetMillis(),
+				utils.Cfg.PrivacySettings.ShowFullName, utils.Cfg.PrivacySettings.ShowEmailAddress)
 		} else if err := cursor.One(&updateAt); err != nil {
 			result.Err = model.NewLocAppError("RethinkUserStore.GetEtagForProfiles",
 				"store.sql_user.get_profiles.cursor.app_error", nil, err.Error())
 		} else {
-			result.Data = fmt.Sprintf("%v.%v", model.CurrentVersion, updateAt)
+			result.Data = fmt.Sprintf("%v.%v.%v.%v", model.CurrentVersion, updateAt,
+				utils.Cfg.PrivacySettings.ShowFullName, utils.Cfg.PrivacySettings.ShowEmailAddress)
 		}
 
 		storeChannel <- result
