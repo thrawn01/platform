@@ -8,7 +8,7 @@ import (
 )
 
 type RethinkSessionStore struct {
-	rethink *rethink.Session
+	session *rethink.Session
 	team    *RethinkTeamStore
 }
 
@@ -23,19 +23,19 @@ func (me RethinkSessionStore) UpgradeSchemaIfNeeded() {
 }
 
 func (s RethinkSessionStore) CreateTablesIfNotExists() {
-	err := rethink.TableCreate("Sessions", rethink.TableCreateOpts{PrimaryKey: "Id"}).Exec(s.rethink, execOpts)
+	err := rethink.TableCreate("Sessions", rethink.TableCreateOpts{PrimaryKey: "Id"}).Exec(s.session, execOpts)
 	handleCreateError("Sessions.CreateTablesIfNotExists()", err)
 }
 
 func (self RethinkSessionStore) CreateIndexesIfNotExists() {
-	err := rethink.Table("Sessions").IndexCreate("UserId").Exec(self.rethink, execOpts)
+	err := rethink.Table("Sessions").IndexCreate("UserId").Exec(self.session, execOpts)
 	handleCreateError("Sessions.CreateIndexesIfNotExists().UserId.IndexCreate", err)
-	err = rethink.Table("Sessions").IndexWait("UserId").Exec(self.rethink, execOpts)
+	err = rethink.Table("Sessions").IndexWait("UserId").Exec(self.session, execOpts)
 	handleCreateError("Sessions.CreateIndexesIfNotExists().UserId.IndexWait", err)
 
-	err = rethink.Table("Sessions").IndexCreate("Token").Exec(self.rethink, execOpts)
+	err = rethink.Table("Sessions").IndexCreate("Token").Exec(self.session, execOpts)
 	handleCreateError("Sessions.CreateIndexesIfNotExists().Token.IndexCreate", err)
-	err = rethink.Table("Sessions").IndexWait("Token").Exec(self.rethink, execOpts)
+	err = rethink.Table("Sessions").IndexWait("Token").Exec(self.session, execOpts)
 	handleCreateError("Sessions.CreateIndexesIfNotExists().Token.IndexWait", err)
 }
 
@@ -62,7 +62,7 @@ func (self RethinkSessionStore) Save(session *model.Session) StoreChannel {
 
 		tcs := self.team.GetTeamsForUser(session.UserId)
 
-		_, err := rethink.Table("Sessions").Insert(session).RunWrite(self.rethink, runOpts)
+		_, err := rethink.Table("Sessions").Insert(session).RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkSessionStore.Save",
 				"store.rethink_session.save.app_error", nil, "id="+session.Id+", "+err.Error())
@@ -99,7 +99,7 @@ func (self RethinkSessionStore) Get(sessionIdOrToken string) StoreChannel {
 		var session model.Session
 
 		cursor, err := rethink.Table("Sessions").Filter(rethink.Row.Field("Token").Eq(sessionIdOrToken).
-			Or(rethink.Row.Field("Id").Eq(sessionIdOrToken))).Run(self.rethink, runOpts)
+			Or(rethink.Row.Field("Id").Eq(sessionIdOrToken))).Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkSessionStore.Get",
 				"store.rethink_session.get.app_error", nil,
@@ -150,7 +150,7 @@ func (self RethinkSessionStore) GetSessions(userId string) StoreChannel {
 		tcs := self.team.GetTeamsForUser(userId)
 
 		cursor, err := rethink.Table("Sessions").Filter(rethink.Row.Field("UserId").Eq(userId)).
-			OrderBy(rethink.Desc("LastActivityAt")).Run(self.rethink, runOpts)
+			OrderBy(rethink.Desc("LastActivityAt")).Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkSessionStore.GetSessions",
 				"store.rethink_session.get_sessions.app_error", nil, err.Error())
@@ -186,7 +186,7 @@ func (self RethinkSessionStore) Remove(sessionIdOrToken string) StoreChannel {
 		result := StoreResult{}
 
 		_, err := rethink.Table("Sessions").Filter(rethink.Row.Field("Token").Eq(sessionIdOrToken).
-			Or(rethink.Row.Field("Id").Eq(sessionIdOrToken))).Delete().RunWrite(self.rethink, runOpts)
+			Or(rethink.Row.Field("Id").Eq(sessionIdOrToken))).Delete().RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkSessionStore.RemoveSession",
 				"store.rethink_session.remove.app_error", nil,
@@ -206,7 +206,7 @@ func (self RethinkSessionStore) RemoveAllSessions() StoreChannel {
 	go func() {
 		result := StoreResult{}
 
-		_, err := rethink.Table("Sessions").Delete().RunWrite(self.rethink, runOpts)
+		_, err := rethink.Table("Sessions").Delete().RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkSessionStore.RemoveAllSessions",
 				"store.rethink_session.remove_all_sessions_for_team.app_error", nil, err.Error())
@@ -226,7 +226,7 @@ func (self RethinkSessionStore) PermanentDeleteSessionsByUser(userId string) Sto
 		result := StoreResult{}
 
 		_, err := rethink.Table("Sessions").Filter(rethink.Row.Field("UserId").Eq(userId)).
-			Delete().RunWrite(self.rethink, runOpts)
+			Delete().RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkSessionStore.RemoveAllSessionsForUser",
 				"store.rethink_session.permanent_delete_sessions_by_user.app_error", nil,
@@ -249,7 +249,7 @@ func (self RethinkSessionStore) CleanUpExpiredSessions(userId string) StoreChann
 
 		// This request should not return until the sessions are removed
 		_, err := rethink.Table("Sessions").Filter(rethink.Row.Field("UserId").Eq(userId).
-			And(rethink.Row.Field("ExpiresAt").Gt(time))).Delete().RunWrite(self.rethink, runOptsHard)
+			And(rethink.Row.Field("ExpiresAt").Gt(time))).Delete().RunWrite(self.session, runOptsHard)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkSessionStore.CleanUpExpiredSessions",
 				"store.rethink_session.cleanup_expired_sessions.app_error", nil, err.Error())
@@ -271,7 +271,7 @@ func (self RethinkSessionStore) UpdateLastActivityAt(sessionId string, time int6
 		result := StoreResult{}
 
 		_, err := rethink.Table("Session").Get(sessionId).Update(map[string]interface{}{"LastActivityAt": time}).
-			RunWrite(self.rethink, runOpts)
+			RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkSessionStore.UpdateLastActivityAt",
 				"store.rethink_session.update_last_activity.app_error", nil, "sessionId="+sessionId)
@@ -292,7 +292,7 @@ func (self RethinkSessionStore) UpdateRoles(userId, roles string) StoreChannel {
 	go func() {
 		result := StoreResult{}
 		_, err := rethink.Table("Session").Filter(rethink.Row.Field("UserId").Eq(userId)).
-			Update(map[string]interface{}{"Roles": roles}).RunWrite(self.rethink, runOpts)
+			Update(map[string]interface{}{"Roles": roles}).RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkSessionStore.UpdateRoles",
 				"store.rethink_session.update_roles.app_error", nil, "userId="+userId)
@@ -314,7 +314,7 @@ func (self RethinkSessionStore) UpdateDeviceId(id, deviceId string) StoreChannel
 		result := StoreResult{}
 
 		_, err := rethink.Table("Session").Get(id).
-			Update(map[string]interface{}{"DeviceId": deviceId}).RunWrite(self.rethink, runOpts)
+			Update(map[string]interface{}{"DeviceId": deviceId}).RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkSessionStore.UpdateDeviceId",
 				"store.rethink_session.update_device_id.app_error", nil, err.Error())
@@ -338,7 +338,7 @@ func (self RethinkSessionStore) AnalyticsSessionCount() StoreChannel {
 		time := model.GetMillis()
 		var count int64
 		cursor, err := rethink.Table("Session").Filter(rethink.Row.Field("ExpiresAt").Gt(time)).
-			Count().Run(self.rethink, runOpts)
+			Count().Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkSessionStore.AnalyticsSessionCount",
 				"store.rethink_session.analytics_session_count.app_error", nil, err.Error())

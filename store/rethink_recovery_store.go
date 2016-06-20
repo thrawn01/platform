@@ -6,7 +6,7 @@ import (
 )
 
 type RethinkRecoveryStore struct {
-	rethink *rethink.Session
+	session *rethink.Session
 }
 
 func NewRethinkRecoveryStore(session *rethink.Session) *RethinkRecoveryStore {
@@ -21,15 +21,15 @@ func (s RethinkRecoveryStore) UpgradeSchemaIfNeeded() {
 
 func (s RethinkRecoveryStore) CreateTablesIfNotExists() {
 	err := rethink.TableCreate("Recovery", rethink.TableCreateOpts{PrimaryKey: "Id"}).
-		Exec(s.rethink, execOpts)
+		Exec(s.session, execOpts)
 	handleCreateError("Recovery.CreateTablesIfNotExists()", err)
 }
 
 func (s RethinkRecoveryStore) CreateIndexesIfNotExists() {
 	handleCreateError("Recovery.Code.CreateIndexesIfNotExists().IndexCreate",
-		rethink.Table("Recovery").IndexCreate("Code").Exec(s.rethink, execOpts))
+		rethink.Table("Recovery").IndexCreate("Code").Exec(s.session, execOpts))
 	handleCreateError("Recovery.Code.CreateIndexesIfNotExists().IndexWait",
-		rethink.Table("Recovery").IndexWait("Code").Exec(s.rethink, execOpts))
+		rethink.Table("Recovery").IndexWait("Code").Exec(s.session, execOpts))
 }
 
 func (s RethinkRecoveryStore) SaveOrUpdate(recovery *model.PasswordRecovery) StoreChannel {
@@ -48,13 +48,13 @@ func (s RethinkRecoveryStore) SaveOrUpdate(recovery *model.PasswordRecovery) Sto
 
 		cursor, err := rethink.Table("Recovery").
 			Filter(rethink.Row.Field("UserId").Eq(recovery.UserId)).
-			Run(s.rethink, runOpts)
+			Run(s.session, runOpts)
 
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkRecoveryStore.SaveOrUpdate",
 				"store.sql_recover.update.app_error", nil, err.Error())
 		} else if cursor.IsNil() {
-			changed, err := rethink.Table("Recovery").Insert(recovery).RunWrite(s.rethink, runOpts)
+			changed, err := rethink.Table("Recovery").Insert(recovery).RunWrite(s.session, runOpts)
 			if err != nil {
 				result.Err = model.NewLocAppError("RethinkRecoveryStore.SaveOrUpdate",
 					"store.sql_recover.save.app_error", nil, "")
@@ -64,10 +64,10 @@ func (s RethinkRecoveryStore) SaveOrUpdate(recovery *model.PasswordRecovery) Sto
 			}
 		} else {
 			changed, err := rethink.Table("Recovery").Get(recovery.UserId).
-				Update(recovery).RunWrite(s.rethink, runOpts)
+				Update(recovery).RunWrite(s.session, runOpts)
 			if err != nil {
 				result.Err = model.NewLocAppError("RethinkRecoveryStore.SaveOrUpdate",
-					"store.sql_recover.update.app_error", nil, err.Error()
+					"store.sql_recover.update.app_error", nil, err.Error())
 			} else if changed.Updated != 1 {
 				result.Err = model.NewLocAppError("RethinkRecoveryStore.SaveOrUpdate",
 					"store.sql_recover.update.not_found.app_error", nil, "")
@@ -94,7 +94,7 @@ func (s RethinkRecoveryStore) Delete(userId string) StoreChannel {
 
 		_, err := rethink.Table("Recovery").
 			Filter(rethink.Row.Field("UserId").Eq(userId)).Delete().
-				RunWrite(s.rethink, runOpts)
+			RunWrite(s.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkRecoveryStore.Delete",
 				"store.sql_recover.delete.app_error", nil, "")
@@ -118,7 +118,7 @@ func (s RethinkRecoveryStore) Get(userId string) StoreChannel {
 
 		cursor, err := rethink.Table("Recovery").
 			Filter(rethink.Row.Field("UserId").Eq(userId)).
-			Run(s.rethink, runOpts)
+			Run(s.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkRecoveryStore.Get",
 				"store.sql_recover.get.app_error", nil, "")
@@ -147,7 +147,7 @@ func (s RethinkRecoveryStore) GetByCode(code string) StoreChannel {
 
 		cursor, err := rethink.Table("Recovery").
 			Filter(rethink.Row.Field("Code").Eq(code)).
-			Run(s.rethink, runOpts)
+			Run(s.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkRecoveryStore.GetByCode",
 				"store.sql_recover.get_by_code.app_error", nil, "")

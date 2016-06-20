@@ -8,28 +8,28 @@ import (
 )
 
 type RethinkComplianceStore struct {
-	rethink *rethink.Session
+	session *rethink.Session
 }
 
 func NewRethinkComplianceStore(session *rethink.Session) ComplianceStore {
-	s := &RethinkComplianceStore{session}
-	s.CreateIndexesIfNotExists()
-	s.CreateTablesIfNotExists()
-	return s
+	store := &RethinkComplianceStore{session}
+	store.CreateIndexesIfNotExists()
+	store.CreateTablesIfNotExists()
+	return store
 }
 
-func (s RethinkComplianceStore) UpgradeSchemaIfNeeded() {
+func (self RethinkComplianceStore) UpgradeSchemaIfNeeded() {
 }
 
-func (s RethinkComplianceStore) CreateTablesIfNotExists() {
-	err := rethink.TableCreate("Compliances", rethink.TableCreateOpts{PrimaryKey: "Id"}).Exec(s.rethink, execOpts)
+func (self RethinkComplianceStore) CreateTablesIfNotExists() {
+	err := rethink.TableCreate("Compliances", rethink.TableCreateOpts{PrimaryKey: "Id"}).Exec(self.session, execOpts)
 	handleCreateError("Compliances.CreateTablesIfNotExists()", err)
 }
 
-func (s RethinkComplianceStore) CreateIndexesIfNotExists() {
+func (self RethinkComplianceStore) CreateIndexesIfNotExists() {
 }
 
-func (s RethinkComplianceStore) Save(compliance *model.Compliance) StoreChannel {
+func (self RethinkComplianceStore) Save(compliance *model.Compliance) StoreChannel {
 
 	storeChannel := make(StoreChannel)
 
@@ -43,7 +43,7 @@ func (s RethinkComplianceStore) Save(compliance *model.Compliance) StoreChannel 
 			return
 		}
 
-		changed, err := rethink.Table("Compliances").Insert(compliance).RunWrite(s.rethink, runOpts)
+		changed, err := rethink.Table("Compliances").Insert(compliance).RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkComplianceStore.Save",
 				"store.rethink_compliance.save.saving.app_error", nil, err.Error())
@@ -61,7 +61,7 @@ func (s RethinkComplianceStore) Save(compliance *model.Compliance) StoreChannel 
 	return storeChannel
 }
 
-func (us RethinkComplianceStore) Update(compliance *model.Compliance) StoreChannel {
+func (self RethinkComplianceStore) Update(compliance *model.Compliance) StoreChannel {
 
 	storeChannel := make(StoreChannel)
 
@@ -75,7 +75,7 @@ func (us RethinkComplianceStore) Update(compliance *model.Compliance) StoreChann
 		}
 
 		_, err := rethink.Table("Compliances").Get(compliance.Id).Update(compliance).
-			RunWrite(us.rethink, runOpts)
+			RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkComplianceStore.Update",
 				"store.rethink_compliance.save.saving.app_error", nil, err.Error())
@@ -90,7 +90,7 @@ func (us RethinkComplianceStore) Update(compliance *model.Compliance) StoreChann
 	return storeChannel
 }
 
-func (s RethinkComplianceStore) GetAll() StoreChannel {
+func (self RethinkComplianceStore) GetAll() StoreChannel {
 
 	storeChannel := make(StoreChannel)
 
@@ -99,7 +99,7 @@ func (s RethinkComplianceStore) GetAll() StoreChannel {
 		result := StoreResult{}
 
 		var compliances model.Compliances
-		cursor, err := rethink.Table("Compliances").OrderBy(rethink.Desc("CreateAt")).Run(s.rethink, runOpts)
+		cursor, err := rethink.Table("Compliances").OrderBy(rethink.Desc("CreateAt")).Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkComplianceStore.Get",
 				"store.rethink_compliance.get.finding.app_error", nil, err.Error())
@@ -110,6 +110,9 @@ func (s RethinkComplianceStore) GetAll() StoreChannel {
 			result.Data = compliances
 		}
 
+		if cursor != nil {
+			cursor.Close()
+		}
 		storeChannel <- result
 		close(storeChannel)
 	}()
@@ -117,7 +120,7 @@ func (s RethinkComplianceStore) GetAll() StoreChannel {
 	return storeChannel
 }
 
-func (us RethinkComplianceStore) Get(id string) StoreChannel {
+func (self RethinkComplianceStore) Get(id string) StoreChannel {
 
 	storeChannel := make(StoreChannel)
 
@@ -125,7 +128,7 @@ func (us RethinkComplianceStore) Get(id string) StoreChannel {
 		result := StoreResult{}
 
 		var compliance model.Compliance
-		cursor, err := rethink.Table("Compliances").Get(id).Run(us.rethink, runOpts)
+		cursor, err := rethink.Table("Compliances").Get(id).Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkComplianceStore.Get",
 				"store.rethink_compliance.get.finding.app_error", nil, err.Error())
@@ -139,6 +142,9 @@ func (us RethinkComplianceStore) Get(id string) StoreChannel {
 			result.Data = compliance
 		}
 
+		if cursor != nil {
+			cursor.Close()
+		}
 		storeChannel <- result
 		close(storeChannel)
 
@@ -147,7 +153,7 @@ func (us RethinkComplianceStore) Get(id string) StoreChannel {
 	return storeChannel
 }
 
-func (s RethinkComplianceStore) ComplianceExport(job *model.Compliance) StoreChannel {
+func (self RethinkComplianceStore) ComplianceExport(job *model.Compliance) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
@@ -225,7 +231,7 @@ func (s RethinkComplianceStore) ComplianceExport(job *model.Compliance) StoreCha
 			Limit(30000)
 
 		var cposts []*model.CompliancePost
-		cursor, err := term.Run(s.rethink, runOpts)
+		cursor, err := term.Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkPostStore.ComplianceExport",
 				"store.rethink_post.compliance_export.app_error", nil, err.Error())
@@ -236,6 +242,9 @@ func (s RethinkComplianceStore) ComplianceExport(job *model.Compliance) StoreCha
 			result.Data = cposts
 		}
 
+		if cursor != nil {
+			cursor.Close()
+		}
 		storeChannel <- result
 		close(storeChannel)
 	}()

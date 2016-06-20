@@ -35,15 +35,15 @@ func (o RethinkPreferences) GetCategories(category string) Preferences {
 	return results
 }
 
-func RethinkPreferencesFromPreferences(prefs Preferences) RethinkPreferences {
+func RethinkPreferencesFromPreferences(prefs *Preferences) RethinkPreferences {
 	result := RethinkPreferences{}
-	if len(prefs) == 0 {
+	if len(*prefs) == 0 {
 		return result
 	}
-	for _, value := range prefs {
+	for _, value := range *prefs {
 		result.Preferences = append(result.Preferences, value)
 	}
-	result.UserId = prefs[0].UserId
+	result.UserId = (*prefs)[0].UserId
 	return result
 }
 

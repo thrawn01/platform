@@ -10,7 +10,7 @@ import (
 )
 
 type RethinkUserStore struct {
-	rethink *rethink.Session
+	session *rethink.Session
 }
 
 func NewRethinkUserStore(session *rethink.Session) *RethinkUserStore {
@@ -20,28 +20,29 @@ func NewRethinkUserStore(session *rethink.Session) *RethinkUserStore {
 	return us
 }
 
-func (us RethinkUserStore) UpgradeSchemaIfNeeded() {
+func (self RethinkUserStore) UpgradeSchemaIfNeeded() {
 	// ADDED for 2.0 REMOVE for 2.4
 	//us.CreateColumnIfNotExists("Users", "Locale", "varchar(5)", "character varying(5)", model.DEFAULT_LOCALE)
 }
 
-func (us RethinkUserStore) CreateTablesIfNotExists() {
-	err := rethink.TableCreate("Users", rethink.TableCreateOpts{PrimaryKey: "Id"}).Exec(us.rethink, execOpts)
+func (self RethinkUserStore) CreateTablesIfNotExists() {
+	err := rethink.TableCreate("Users", rethink.TableCreateOpts{PrimaryKey: "Id"}).Exec(self.session, execOpts)
 	handleCreateError("Users.CreateTablesIfNotExists().", err)
-	err = rethink.TableCreate("TeamMembers").Exec(us.rethink, execOpts)
+	err = rethink.TableCreate("TeamMembers").Exec(self.session, execOpts)
 	handleCreateError("TeamMembers.CreateTablesIfNotExists()", err)
 }
 
-func (us RethinkUserStore) CreateIndexesIfNotExists() {
-	err := rethink.Table("Users").IndexCreate("Email").Exec(us.rethink, execOpts)
+func (self RethinkUserStore) CreateIndexesIfNotExists() {
+	err := rethink.Table("Users").IndexCreate("Email").Exec(self.session, execOpts)
 	handleCreateError("Users.CreateIndexesIfNotExists().Email.IndexCreate", err)
-	err = rethink.Table("Users").IndexWait("Email").Exec(us.rethink, execOpts)
+	err = rethink.Table("Users").IndexWait("Email").Exec(self.session, execOpts)
 	handleCreateError("Channels.CreateIndexesIfNotExists().Email.IndexWait", err)
 }
 
-func (us RethinkUserStore) validEmailAndUsername(user *model.User) *model.AppError {
+func (self RethinkUserStore) validEmailAndUsername(user *model.User) *model.AppError {
 	// Does a user with this email already exist?
-	cursor, err := rethink.Table("Users").Filter(rethink.Row.Field("Email").Eq(user.Email)).Run(us.rethink, runOpts)
+	cursor, err := rethink.Table("Users").Filter(rethink.Row.Field("Email").Eq(user.Email)).
+		Run(self.session, runOpts)
 	if !cursor.IsNil() {
 		cursor.Close()
 		return model.NewLocAppError("RethinkUserStore.Save",
@@ -53,7 +54,8 @@ func (us RethinkUserStore) validEmailAndUsername(user *model.User) *model.AppErr
 	// TODO: thrawn - Shouldn't this be one query instead of two?
 
 	// Does this username already exist?
-	cursor, err = rethink.Table("Users").Filter(rethink.Row.Field("Username").Eq(user.Username)).Run(us.rethink, runOpts)
+	cursor, err = rethink.Table("Users").Filter(rethink.Row.Field("Username").Eq(user.Username)).
+		Run(self.session, runOpts)
 	if !cursor.IsNil() {
 		cursor.Close()
 		return model.NewLocAppError("RethinkUserStore.Save",
@@ -64,7 +66,7 @@ func (us RethinkUserStore) validEmailAndUsername(user *model.User) *model.AppErr
 	return nil
 }
 
-func (us RethinkUserStore) Save(user *model.User) StoreChannel {
+func (self RethinkUserStore) Save(user *model.User) StoreChannel {
 
 	storeChannel := make(StoreChannel)
 
@@ -72,7 +74,8 @@ func (us RethinkUserStore) Save(user *model.User) StoreChannel {
 		result := StoreResult{}
 
 		if len(user.Id) > 0 {
-			result.Err = model.NewLocAppError("RethinkUserStore.Save", "store.sql_user.save.existing.app_error", nil, "user_id="+user.Id)
+			result.Err = model.NewLocAppError("RethinkUserStore.Save",
+				"store.sql_user.save.existing.app_error", nil, "user_id="+user.Id)
 			storeChannel <- result
 			close(storeChannel)
 			return
@@ -96,7 +99,7 @@ func (us RethinkUserStore) Save(user *model.User) StoreChannel {
 		}
 		defer func() { dLock.UnLock("newUser") }()
 
-		if err := us.validEmailAndUsername(user); err != nil {
+		if err := self.validEmailAndUsername(user); err != nil {
 			result.Err = err
 			storeChannel <- result
 			close(storeChannel)
@@ -104,7 +107,7 @@ func (us RethinkUserStore) Save(user *model.User) StoreChannel {
 		}
 
 		// Create the user
-		changed, err := rethink.Table("Users").Insert(user).RunWrite(us.rethink, runOpts)
+		changed, err := rethink.Table("Users").Insert(user).RunWrite(self.session, runOpts)
 		if err != nil {
 			if rethink.IsConflictErr(err) {
 				result.Err = model.NewLocAppError("RethinkUserStore.Save",
@@ -130,7 +133,7 @@ func (us RethinkUserStore) Save(user *model.User) StoreChannel {
 	return storeChannel
 }
 
-func (us RethinkUserStore) Update(user *model.User, trustedUpdateData bool) StoreChannel {
+func (self RethinkUserStore) Update(user *model.User, trustedUpdateData bool) StoreChannel {
 
 	storeChannel := make(StoreChannel)
 
@@ -147,7 +150,7 @@ func (us RethinkUserStore) Update(user *model.User, trustedUpdateData bool) Stor
 
 		checkUser := false
 		oldUser := model.User{}
-		cursor, err := rethink.Table("Users").Get(user.Id).Run(us.rethink, runOpts)
+		cursor, err := rethink.Table("Users").Get(user.Id).Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkUserStore.Update",
 				"store.sql_user.update.finding.app_error", nil,
@@ -185,7 +188,9 @@ func (us RethinkUserStore) Update(user *model.User, trustedUpdateData bool) Stor
 					user.FirstName != oldUser.FirstName ||
 					user.LastName != oldUser.LastName ||
 					user.Email != oldUser.Email {
-					result.Err = model.NewLocAppError("RethinkUserStore.Update", "store.sql_user.update.can_not_change_ldap.app_error", nil, "user_id="+user.Id)
+					result.Err = model.NewLocAppError("RethinkUserStore.Update",
+						"store.sql_user.update.can_not_change_ldap.app_error", nil,
+						"user_id="+user.Id)
 					storeChannel <- result
 					close(storeChannel)
 					return
@@ -213,7 +218,7 @@ func (us RethinkUserStore) Update(user *model.User, trustedUpdateData bool) Stor
 				}
 				defer func() { dLock.UnLock("newUser") }()
 
-				if err := us.validEmailAndUsername(user); err != nil {
+				if err := self.validEmailAndUsername(user); err != nil {
 					result.Err = err
 					storeChannel <- result
 					close(storeChannel)
@@ -221,7 +226,7 @@ func (us RethinkUserStore) Update(user *model.User, trustedUpdateData bool) Stor
 				}
 			}
 
-			changed, err := rethink.Table("Users").Get(user.Id).Update(user).RunWrite(us.rethink, runOpts)
+			changed, err := rethink.Table("Users").Get(user.Id).Update(user).RunWrite(self.session, runOpts)
 			if err != nil {
 				result.Err = model.NewLocAppError("RethinkUserStore.Update",
 					"store.sql_user.update.updating.app_error", nil,
@@ -246,7 +251,7 @@ func (us RethinkUserStore) Update(user *model.User, trustedUpdateData bool) Stor
 	return storeChannel
 }
 
-func (us RethinkUserStore) UpdateLastPictureUpdate(userId string) StoreChannel {
+func (self RethinkUserStore) UpdateLastPictureUpdate(userId string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
@@ -256,12 +261,12 @@ func (us RethinkUserStore) UpdateLastPictureUpdate(userId string) StoreChannel {
 
 		changed, err := rethink.Table("Users").Get(userId).
 			Update(map[string]interface{}{"UpdateAt": curTime, "LastPictureUpdate": curTime}).
-			RunWrite(us.rethink, runOpts)
+			RunWrite(self.session, runOpts)
 		if err != nil {
-			result.Err = model.NewLocAppError("RethinkUserStore.UpdateUpdateAt",
+			result.Err = model.NewLocAppError("RethinkUserStore.UpdateLastPictureUpdate",
 				"store.sql_user.update_last_picture_update.app_error", nil, "user_id="+userId)
 		} else if changed.Skipped != 0 {
-			result.Err = model.NewLocAppError("RethinkUserStore.UpdateUpdateAt",
+			result.Err = model.NewLocAppError("RethinkUserStore.UpdateLastPictureUpdate",
 				"store.sql_user.update_last_picture_update.notfound.app_error", nil, "user_id="+userId)
 		} else {
 			result.Data = userId
@@ -274,7 +279,33 @@ func (us RethinkUserStore) UpdateLastPictureUpdate(userId string) StoreChannel {
 	return storeChannel
 }
 
-func (us RethinkUserStore) UpdateLastPingAt(userId string, time int64) StoreChannel {
+func (self RethinkUserStore) UpdateUpdateAt(userId string) StoreChannel {
+	storeChannel := make(StoreChannel)
+
+	go func() {
+		result := StoreResult{}
+
+		curTime := model.GetMillis()
+
+		err := rethink.Table("Users").Filter(rethink.Row.Field("Id").Eq(userId).
+			Update(map[string]interface{}{
+				"UpdateAt": curTime,
+			})).Exec(self.session, execOpts)
+		if err != nil {
+			result.Err = model.NewLocAppError("SqlUserStore.UpdateUpdateAt",
+				"store.sql_user.update_update.app_error", nil, "user_id="+userId)
+		} else {
+			result.Data = userId
+		}
+
+		storeChannel <- result
+		close(storeChannel)
+	}()
+
+	return storeChannel
+}
+
+func (self RethinkUserStore) UpdateLastPingAt(userId string, time int64) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	// UPDATE Users SET LastPingAt = :LastPingAt WHERE Id = :UserId
@@ -283,7 +314,7 @@ func (us RethinkUserStore) UpdateLastPingAt(userId string, time int64) StoreChan
 
 		changed, err := rethink.Table("Users").Get(userId).
 			Update(map[string]interface{}{"LastPingAt": time}).
-			RunWrite(us.rethink, runOpts)
+			RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkUserStore.UpdateLastPingAt",
 				"store.sql_user.update_last_ping.app_error", nil, "user_id="+userId)
@@ -301,16 +332,16 @@ func (us RethinkUserStore) UpdateLastPingAt(userId string, time int64) StoreChan
 	return storeChannel
 }
 
-func (us RethinkUserStore) UpdateLastActivityAt(userId string, time int64) StoreChannel {
+func (self RethinkUserStore) UpdateLastActivityAt(userId string, time int64) StoreChannel {
 	storeChannel := make(StoreChannel)
 
-	// UPDATE Users SET LastActivityAt = :LastActivityAt WHERE Id = :UserId", map[string]interface{}{"LastActivityAt": time, "UserId": userId}); err != nil {
+	// UPDATE Users SET LastActivityAt = :LastActivityAt WHERE Id = :UserId
 	go func() {
 		result := StoreResult{}
 
 		changed, err := rethink.Table("Users").Get(userId).
 			Update(map[string]interface{}{"LastActivityAt": time}).
-			RunWrite(us.rethink, runOpts)
+			RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkUserStore.UpdateLastActivityAt",
 				"store.sql_user.update_last_activity.app_error", nil, "user_id="+userId)
@@ -328,7 +359,7 @@ func (us RethinkUserStore) UpdateLastActivityAt(userId string, time int64) Store
 	return storeChannel
 }
 
-func (us RethinkUserStore) UpdateUserAndSessionActivity(userId string, sessionId string, time int64) StoreChannel {
+func (self RethinkUserStore) UpdateUserAndSessionActivity(userId string, sessionId string, time int64) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	// UPDATE Users SET LastActivityAt = :UserLastActivityAt WHERE Id = :UserId
@@ -338,7 +369,7 @@ func (us RethinkUserStore) UpdateUserAndSessionActivity(userId string, sessionId
 
 		changed, err := rethink.Table("Users").Get(userId).
 			Update(map[string]interface{}{"LastActivityAt": time}).
-			RunWrite(us.rethink, runOpts)
+			RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkUserStore.UpdateLastActivityAt",
 				"store.sql_user.update_last_activity.app_error", nil,
@@ -355,7 +386,7 @@ func (us RethinkUserStore) UpdateUserAndSessionActivity(userId string, sessionId
 
 		changed, err = rethink.Table("Sessions").Get(sessionId).
 			Update(map[string]interface{}{"LastActivityAt": time}).
-			RunWrite(us.rethink, runOpts)
+			RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkUserStore.UpdateLastActivityAt",
 				"store.sql_user.update_last_activity.session.app_error", nil,
@@ -375,7 +406,7 @@ func (us RethinkUserStore) UpdateUserAndSessionActivity(userId string, sessionId
 	return storeChannel
 }
 
-func (us RethinkUserStore) UpdatePassword(userId, hashedPassword string) StoreChannel {
+func (self RethinkUserStore) UpdatePassword(userId, hashedPassword string) StoreChannel {
 
 	storeChannel := make(StoreChannel)
 
@@ -395,7 +426,7 @@ func (us RethinkUserStore) UpdatePassword(userId, hashedPassword string) StoreCh
 				"AuthService":        "",
 				"EmailVerified":      true,
 				"FailedAttempts":     0,
-			}).RunWrite(us.rethink, runOpts)
+			}).RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkUserStore.UpdatePassword",
 				"store.sql_user.update_password.app_error", nil, "id="+userId+", "+err.Error())
@@ -414,7 +445,7 @@ func (us RethinkUserStore) UpdatePassword(userId, hashedPassword string) StoreCh
 	return storeChannel
 }
 
-func (us RethinkUserStore) UpdateFailedPasswordAttempts(userId string, attempts int) StoreChannel {
+func (self RethinkUserStore) UpdateFailedPasswordAttempts(userId string, attempts int) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	// UPDATE Users SET FailedAttempts = :FailedAttempts WHERE Id = :UserId
@@ -423,7 +454,7 @@ func (us RethinkUserStore) UpdateFailedPasswordAttempts(userId string, attempts 
 		changed, err := rethink.Table("Users").Get(userId).
 			Update(map[string]interface{}{
 				"FailedAttempts": attempts,
-			}).RunWrite(us.rethink, runOpts)
+			}).RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkUserStore.UpdateFailedPasswordAttempts",
 				"store.sql_user.update_failed_pwd_attempts.app_error", nil, "user_id="+userId)
@@ -442,7 +473,7 @@ func (us RethinkUserStore) UpdateFailedPasswordAttempts(userId string, attempts 
 	return storeChannel
 }
 
-func (self RethinkUserStore) UpdateAuthData(userId, service, authData, email string) StoreChannel {
+func (self RethinkUserStore) UpdateAuthData(userId, service string, authData *string, email string) StoreChannel {
 
 	storeChannel := make(StoreChannel)
 
@@ -461,7 +492,7 @@ func (self RethinkUserStore) UpdateAuthData(userId, service, authData, email str
 			"UpdateAt":           updateAt,
 			"FailedAttempts":     0,
 			"AuthService":        service,
-			"AuthData":           authData,
+			"AuthData":           *authData,
 		}
 
 		if len(email) != 0 {
@@ -476,9 +507,9 @@ func (self RethinkUserStore) UpdateAuthData(userId, service, authData, email str
 			defer func() { dLock.UnLock("newUser") }()
 
 			update["Email"] = email
-			user, err := self._get(userId)
-			if err != nil {
-				result.Err = err
+			user, appErr := self._get(userId)
+			if appErr != nil {
+				result.Err = appErr
 				return
 			}
 			if err := self.validEmailAndUsername(user); err != nil {
@@ -490,7 +521,7 @@ func (self RethinkUserStore) UpdateAuthData(userId, service, authData, email str
 		}
 
 		changed, err := rethink.Table("Users").Get(userId).
-			Update(update).RunWrite(self.rethink, runOpts)
+			Update(update).RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkUserStore.UpdateAuthData",
 				"store.sql_user.update_auth_data.app_error", nil, "id="+userId+", "+err.Error())
@@ -509,7 +540,7 @@ func (self RethinkUserStore) UpdateAuthData(userId, service, authData, email str
 	return storeChannel
 }
 
-func (us RethinkUserStore) UpdateMfaSecret(userId, secret string) StoreChannel {
+func (self RethinkUserStore) UpdateMfaSecret(userId, secret string) StoreChannel {
 
 	storeChannel := make(StoreChannel)
 
@@ -523,7 +554,7 @@ func (us RethinkUserStore) UpdateMfaSecret(userId, secret string) StoreChannel {
 			Update(map[string]interface{}{
 				"MfaSecret": secret,
 				"UpdateAt":  updateAt,
-			}).RunWrite(us.rethink, runOpts)
+			}).RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkUserStore.UpdateMfaSecret",
 				"store.sql_user.update_mfa_secret.app_error", nil, "id="+userId+", "+err.Error())
@@ -542,7 +573,7 @@ func (us RethinkUserStore) UpdateMfaSecret(userId, secret string) StoreChannel {
 	return storeChannel
 }
 
-func (us RethinkUserStore) UpdateMfaActive(userId string, active bool) StoreChannel {
+func (self RethinkUserStore) UpdateMfaActive(userId string, active bool) StoreChannel {
 
 	storeChannel := make(StoreChannel)
 
@@ -556,7 +587,7 @@ func (us RethinkUserStore) UpdateMfaActive(userId string, active bool) StoreChan
 			Update(map[string]interface{}{
 				"MfaActive": active,
 				"UpdateAt":  updateAt,
-			}).RunWrite(us.rethink, runOpts)
+			}).RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkUserStore.UpdateMfaActive",
 				"store.sql_user.update_mfa_active.app_error", nil, "id="+userId+", "+err.Error())
@@ -575,10 +606,10 @@ func (us RethinkUserStore) UpdateMfaActive(userId string, active bool) StoreChan
 	return storeChannel
 }
 
-func (self RethinkUserStore) _get(id string) (*model.User, error) {
+func (self RethinkUserStore) _get(id string) (*model.User, *model.AppError) {
 
 	user := model.User{}
-	cursor, err := rethink.Table("Users").Get(id).Run(self.rethink, runOpts)
+	cursor, err := rethink.Table("Users").Get(id).Run(self.session, runOpts)
 	if err != nil {
 		return nil, model.NewLocAppError("RethinkUserStore.Get",
 			"store.sql_user.get.app_error", nil, "user_id="+id+", "+err.Error())
@@ -586,7 +617,7 @@ func (self RethinkUserStore) _get(id string) (*model.User, error) {
 		return nil, model.NewLocAppError("RethinkUserStore.Get",
 			"store.sql_user.missing_account.const", nil, "user_id="+id)
 	}
-	return &user
+	return &user, nil
 }
 
 func (self RethinkUserStore) Get(id string) StoreChannel {
@@ -594,7 +625,8 @@ func (self RethinkUserStore) Get(id string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
-		result := StoreResult{self._get(id)}
+		user, err := self._get(id)
+		result := StoreResult{user, err}
 		storeChannel <- result
 		close(storeChannel)
 
@@ -603,7 +635,7 @@ func (self RethinkUserStore) Get(id string) StoreChannel {
 	return storeChannel
 }
 
-func (us RethinkUserStore) GetAll() StoreChannel {
+func (self RethinkUserStore) GetAll() StoreChannel {
 
 	storeChannel := make(StoreChannel)
 
@@ -612,7 +644,7 @@ func (us RethinkUserStore) GetAll() StoreChannel {
 		result := StoreResult{}
 
 		var data []*model.User
-		cursor, err := rethink.Table("Users").Run(us.rethink, runOpts)
+		cursor, err := rethink.Table("Users").Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkUserStore.GetAll",
 				"store.sql_user.get.app_error", nil, err.Error())
@@ -648,7 +680,8 @@ func (s RethinkUserStore) GetEtagForDirectProfiles(userId string) StoreChannel {
 		//    AND ChannelMembers.UserId = :UserId)
 
 		// TODO: fix
-		/*cursor, err := rethink.Table("Channels").EqJoin("ChannelMembers", rethink.Table("ChannelId")).Without(map[string]string{"right": "id"}).
+		/*cursor, err := rethink.Table("Channels").EqJoin("ChannelMembers",
+		 	rethink.Table("ChannelId")).Without(map[string]string{"right": "id"}).
 		Zip().Filter(
 			rethink.Row.Field("UserId").Eq(userId).
 			And(rethink.Row.Field("DeleteAt").Eq(0)). // Added this, seams logical
@@ -707,7 +740,7 @@ func (self RethinkUserStore) GetEtagForAllProfiles() StoreChannel {
 
 		var updateAt int64
 		cursor, err := rethink.Table("Users").OrderBy(rethink.Desc("UpdateAt")).Limit(1).
-			Run(self.rethink, runOpts)
+			Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkUserStore.GetEtagForAllProfiles",
 				"store.sql_user.get_profiles.app_error", nil, err.Error())
@@ -729,7 +762,7 @@ func (self RethinkUserStore) GetEtagForAllProfiles() StoreChannel {
 	return storeChannel
 }
 
-func (us RethinkUserStore) GetAllProfiles() StoreChannel {
+func (self RethinkUserStore) GetAllProfiles() StoreChannel {
 
 	storeChannel := make(StoreChannel)
 
@@ -738,7 +771,7 @@ func (us RethinkUserStore) GetAllProfiles() StoreChannel {
 		result := StoreResult{}
 
 		var users []*model.User
-		cursor, err := rethink.Table("Users").Run(us.rethink, runOpts)
+		cursor, err := rethink.Table("Users").Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkUserStore.GetProfiles",
 				"store.sql_user.get_profiles.app_error", nil, err.Error())
@@ -750,7 +783,8 @@ func (us RethinkUserStore) GetAllProfiles() StoreChannel {
 
 			for _, u := range users {
 				u.Password = ""
-				u.AuthData = ""
+				u.AuthData = new(string)
+				*u.AuthData = ""
 				userMap[u.Id] = u
 			}
 			result.Data = userMap
@@ -775,7 +809,7 @@ func (s RethinkUserStore) GetEtagForProfiles(teamId string) StoreChannel {
 		cursor, err := rethink.Table("Users").EqJoin("TeamMembers", rethink.Table("UserId")).
 			Without(map[string]string{"right": "id"}).Zip().
 			Filter(rethink.Row.Field("TeamId").Eq(teamId)).OrderBy(rethink.Row.Field("UpdateAt")).
-			Run(s.rethink, runOpts)
+			Run(s.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkUserStore.GetEtagForProfiles",
 				"store.sql_user.get_profiles.app_error", nil, err.Error())
@@ -797,7 +831,7 @@ func (s RethinkUserStore) GetEtagForProfiles(teamId string) StoreChannel {
 	return storeChannel
 }
 
-func (us RethinkUserStore) GetProfiles(teamId string) StoreChannel {
+func (self RethinkUserStore) GetProfiles(teamId string) StoreChannel {
 
 	storeChannel := make(StoreChannel)
 
@@ -810,7 +844,7 @@ func (us RethinkUserStore) GetProfiles(teamId string) StoreChannel {
 		cursor, err := rethink.Table("Users").EqJoin("TeamMembers", rethink.Table("UserId")).
 			Without(map[string]string{"right": "id"}).Zip().
 			Filter(rethink.Row.Field("TeamId").Eq(teamId)).
-			Run(us.rethink, runOpts)
+			Run(self.session, runOpts)
 
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkUserStore.GetProfiles",
@@ -823,7 +857,8 @@ func (us RethinkUserStore) GetProfiles(teamId string) StoreChannel {
 
 			for _, u := range users {
 				u.Password = ""
-				u.AuthData = ""
+				u.AuthData = new(string)
+				*u.AuthData = ""
 				userMap[u.Id] = u
 			}
 
@@ -837,7 +872,7 @@ func (us RethinkUserStore) GetProfiles(teamId string) StoreChannel {
 	return storeChannel
 }
 
-func (us RethinkUserStore) GetDirectProfiles(userId string) StoreChannel {
+func (self RethinkUserStore) GetDirectProfiles(userId string) StoreChannel {
 
 	storeChannel := make(StoreChannel)
 
@@ -882,7 +917,8 @@ func (us RethinkUserStore) GetDirectProfiles(userId string) StoreChannel {
 
 					for _, u := range users {
 						u.Password = ""
-						u.AuthData = ""
+						u.AuthData = new(string)
+						*u.AuthData = ""
 						userMap[u.Id] = u
 					}
 
@@ -896,7 +932,7 @@ func (us RethinkUserStore) GetDirectProfiles(userId string) StoreChannel {
 	return storeChannel
 }
 
-func (us RethinkUserStore) GetProfileByIds(userIds []string) StoreChannel {
+func (self RethinkUserStore) GetProfileByIds(userIds []string) StoreChannel {
 
 	storeChannel := make(StoreChannel)
 
@@ -907,7 +943,7 @@ func (us RethinkUserStore) GetProfileByIds(userIds []string) StoreChannel {
 		var users []*model.User
 		cursor, err := rethink.Table("Users").Filter(func(channel rethink.Term) {
 			rethink.Expr(userIds).Contains(channel.Field("Id"))
-		}).Run(us.rethink)
+		}).Run(self.session)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkUserStore.GetProfileByIds",
 				"store.sql_user.get_profiles.app_error", nil, err.Error())
@@ -919,7 +955,8 @@ func (us RethinkUserStore) GetProfileByIds(userIds []string) StoreChannel {
 
 			for _, u := range users {
 				u.Password = ""
-				u.AuthData = ""
+				u.AuthData = new(string)
+				*u.AuthData = ""
 				userMap[u.Id] = u
 			}
 
@@ -933,7 +970,7 @@ func (us RethinkUserStore) GetProfileByIds(userIds []string) StoreChannel {
 	return storeChannel
 }
 
-func (us RethinkUserStore) GetSystemAdminProfiles() StoreChannel {
+func (self RethinkUserStore) GetSystemAdminProfiles() StoreChannel {
 
 	storeChannel := make(StoreChannel)
 
@@ -944,7 +981,7 @@ func (us RethinkUserStore) GetSystemAdminProfiles() StoreChannel {
 		var users []*model.User
 
 		cursor, err := rethink.Table("Users").Filter(rethink.Row.Field("Roles").Eq("system_admin")).
-			Run(us.rethink, runOpts)
+			Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkUserStore.GetSystemAdminProfiles",
 				"store.sql_user.get_sysadmin_profiles.app_error", nil, err.Error())
@@ -957,7 +994,8 @@ func (us RethinkUserStore) GetSystemAdminProfiles() StoreChannel {
 
 			for _, u := range users {
 				u.Password = ""
-				u.AuthData = ""
+				u.AuthData = new(string)
+				*u.AuthData = ""
 				userMap[u.Id] = u
 			}
 
@@ -971,7 +1009,7 @@ func (us RethinkUserStore) GetSystemAdminProfiles() StoreChannel {
 	return storeChannel
 }
 
-func (us RethinkUserStore) GetByEmail(email string) StoreChannel {
+func (self RethinkUserStore) GetByEmail(email string) StoreChannel {
 
 	storeChannel := make(StoreChannel)
 
@@ -984,7 +1022,7 @@ func (us RethinkUserStore) GetByEmail(email string) StoreChannel {
 		user := model.User{}
 
 		cursor, err := rethink.Table("Users").Filter(rethink.Row.Field("Email").Eq(email)).
-			Run(us.rethink, runOpts)
+			Run(self.session, runOpts)
 		if err == nil {
 			result.Err = model.NewLocAppError("RethinkUserStore.GetByEmail",
 				"store.sql_user.missing_account.const", nil, "email="+email+", "+err.Error())
@@ -1002,7 +1040,7 @@ func (us RethinkUserStore) GetByEmail(email string) StoreChannel {
 	return storeChannel
 }
 
-func (us RethinkUserStore) GetByAuth(authData string, authService string) StoreChannel {
+func (self RethinkUserStore) GetByAuth(authData *string, authService string) StoreChannel {
 
 	storeChannel := make(StoreChannel)
 
@@ -1010,25 +1048,33 @@ func (us RethinkUserStore) GetByAuth(authData string, authService string) StoreC
 	go func() {
 		result := StoreResult{}
 
-		user := model.User{}
-
-		cursor, err := rethink.Table("Users").Filter(
-			rethink.Row.Field("AuthData").Eq(authData).
-				And(rethink.Row.Field("AuthService").Eq(authService))).
-			Run(us.rethink, runOpts)
-		if err == nil {
-			result.Err = model.NewLocAppError("RethinkUserStore.GetByAuth",
-				"store.sql_user.get_by_auth.other.app_error", nil,
-				"authData="+authData+", authService="+authService+", "+err.Error())
-		} else if cursor.IsNil() {
-			result.Err = model.NewLocAppError("RethinkUserStore.GetByAuth", MISSING_AUTH_ACCOUNT_ERROR, nil, "authData="+authData+", authService="+authService+", "+err.Error())
-		} else if err := cursor.One(&user); err != nil {
-			result.Err = model.NewLocAppError("RethinkUserStore.GetByAuth",
-				"store.sql_user.get_by_auth.other.cursor.app_error", nil,
-				"authData="+authData+", authService="+authService+", "+err.Error())
+		if authData == nil || *authData == "" {
+			result.Err = model.NewLocAppError("SqlUserStore.GetByAuth",
+				MISSING_AUTH_ACCOUNT_ERROR, nil, "authData='', authService="+authService)
+			storeChannel <- result
+			close(storeChannel)
+			return
 		}
 
-		result.Data = &user
+		user := model.User{}
+
+		cursor, err := rethink.Table("Users").Filter(rethink.Row.Field("AuthData").Eq(*authData).
+			And(rethink.Row.Field("AuthService").Eq(authService))).Run(self.session, runOpts)
+		if err != nil {
+			result.Err = model.NewLocAppError("SqlUserStore.GetByAuth",
+				"store.sql_user.get_by_auth.other.app_error", nil,
+				"authData="+*authData+", authService="+authService+", "+err.Error())
+		} else if cursor.IsNil() {
+			result.Err = model.NewLocAppError("SqlUserStore.GetByAuth",
+				MISSING_AUTH_ACCOUNT_ERROR, nil,
+				"authData="+*authData+", authService="+authService+", "+err.Error())
+		} else if err := cursor.One(&user); err != nil {
+			result.Err = model.NewLocAppError("SqlUserStore.GetByAuth",
+				"store.sql_user.get_by_auth.other.cursor.app_error", nil,
+				"authData="+*authData+", authService="+authService+", "+err.Error())
+		} else {
+			result.Data = &user
+		}
 
 		storeChannel <- result
 		close(storeChannel)
@@ -1037,7 +1083,34 @@ func (us RethinkUserStore) GetByAuth(authData string, authService string) StoreC
 	return storeChannel
 }
 
-func (us RethinkUserStore) GetByUsername(username string) StoreChannel {
+func (self RethinkUserStore) GetAllUsingAuthService(authService string) StoreChannel {
+
+	storeChannel := make(StoreChannel)
+
+	go func() {
+		result := StoreResult{}
+		var users []*model.User
+
+		cursor, err := rethink.Table("Users").Filter(rethink.Row.Field("AuthService").Eq(authService)).
+			Run(self.session, runOpts)
+		if err != nil {
+			result.Err = model.NewLocAppError("SqlUserStore.GetByAuth",
+				"store.sql_user.get_by_auth.other.app_error", nil,
+				"authService="+authService+", "+err.Error())
+		} else if err := cursor.All(&users); err != nil {
+
+		} else {
+			result.Data = users
+		}
+
+		storeChannel <- result
+		close(storeChannel)
+	}()
+
+	return storeChannel
+}
+
+func (self RethinkUserStore) GetByUsername(username string) StoreChannel {
 
 	storeChannel := make(StoreChannel)
 
@@ -1049,7 +1122,7 @@ func (us RethinkUserStore) GetByUsername(username string) StoreChannel {
 
 		cursor, err := rethink.Table("Users").Filter(
 			rethink.Row.Field("Username").Eq(username)).
-			Run(us.rethink, runOpts)
+			Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkUserStore.GetByUsername",
 				"store.sql_user.get_by_username.app_error", nil, err.Error())
@@ -1067,7 +1140,7 @@ func (us RethinkUserStore) GetByUsername(username string) StoreChannel {
 	return storeChannel
 }
 
-func (us RethinkUserStore) GetForLogin(loginId string, allowSignInWithUsername, allowSignInWithEmail, ldapEnabled bool) StoreChannel {
+func (self RethinkUserStore) GetForLogin(loginId string, withUsername, withEmail, ldapEnabled bool) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
@@ -1110,7 +1183,7 @@ func (us RethinkUserStore) GetForLogin(loginId string, allowSignInWithUsername, 
 	return storeChannel
 }
 
-func (us RethinkUserStore) VerifyEmail(userId string) StoreChannel {
+func (self RethinkUserStore) VerifyEmail(userId string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	// UPDATE Users SET EmailVerified = true WHERE Id = :UserId
@@ -1118,7 +1191,7 @@ func (us RethinkUserStore) VerifyEmail(userId string) StoreChannel {
 		result := StoreResult{}
 
 		changed, err := rethink.Table("Users").Get(userId).Update(map[string]interface{}{"EmailVerified": true}).
-			RunWrite(us.rethink, runOpts)
+			RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkUserStore.VerifyEmail",
 				"store.sql_user.verify_email.app_error", nil,
@@ -1138,7 +1211,7 @@ func (us RethinkUserStore) VerifyEmail(userId string) StoreChannel {
 	return storeChannel
 }
 
-func (us RethinkUserStore) GetForExport(teamId string) StoreChannel {
+func (self RethinkUserStore) GetForExport(teamId string) StoreChannel {
 
 	storeChannel := make(StoreChannel)
 
@@ -1150,7 +1223,7 @@ func (us RethinkUserStore) GetForExport(teamId string) StoreChannel {
 		cursor, err := rethink.Table("Users").EqJoin("TeamMembers", rethink.Table("UserId")).
 			Without(map[string]string{"right": "id"}).Zip().
 			Filter(rethink.Row.Field("TeamId").Eq(teamId)).
-			Run(us.rethink, runOpts)
+			Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkUserStore.GetForExport",
 				"store.sql_user.get_for_export.app_error", nil, err.Error())
@@ -1158,9 +1231,10 @@ func (us RethinkUserStore) GetForExport(teamId string) StoreChannel {
 			result.Err = model.NewLocAppError("RethinkUserStore.GetForExport",
 				"store.sql_user.get_for_export.cursor.app_error", nil, err.Error())
 		} else {
-			for _, u := range users {
-				u.Password = ""
-				u.AuthData = ""
+			for _, user := range users {
+				user.Password = ""
+				user.AuthData = new(string)
+				*user.AuthData = ""
 			}
 
 			result.Data = users
@@ -1173,7 +1247,7 @@ func (us RethinkUserStore) GetForExport(teamId string) StoreChannel {
 	return storeChannel
 }
 
-func (us RethinkUserStore) GetTotalUsersCount() StoreChannel {
+func (self RethinkUserStore) GetTotalUsersCount() StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	// SELECT COUNT(Id) FROM Users
@@ -1181,7 +1255,7 @@ func (us RethinkUserStore) GetTotalUsersCount() StoreChannel {
 		result := StoreResult{}
 
 		count := 0
-		cursor, err := rethink.Table("Users").Count().Run(us.rethink, runOpts)
+		cursor, err := rethink.Table("Users").Count().Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkUserStore.GetTotalUsersCount",
 				"store.sql_user.get_total_users_count.app_error", nil, err.Error())
@@ -1199,7 +1273,7 @@ func (us RethinkUserStore) GetTotalUsersCount() StoreChannel {
 	return storeChannel
 }
 
-func (us RethinkUserStore) GetTotalActiveUsersCount() StoreChannel {
+func (self RethinkUserStore) GetTotalActiveUsersCount() StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	// SELECT COUNT(Id) FROM Users WHERE LastActivityAt > :Time
@@ -1210,7 +1284,7 @@ func (us RethinkUserStore) GetTotalActiveUsersCount() StoreChannel {
 
 		count := 0
 		cursor, err := rethink.Table("Users").Filter(rethink.Row.Field("LastActivityAt").Gt(time)).
-			Count().Run(us.rethink, runOpts)
+			Count().Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkUserStore.GetTotalActiveUsersCount",
 				"store.sql_user.get_total_active_users_count.app_error", nil, err.Error())
@@ -1228,7 +1302,7 @@ func (us RethinkUserStore) GetTotalActiveUsersCount() StoreChannel {
 	return storeChannel
 }
 
-func (us RethinkUserStore) PermanentDelete(userId string) StoreChannel {
+func (self RethinkUserStore) PermanentDelete(userId string) StoreChannel {
 
 	storeChannel := make(StoreChannel)
 
@@ -1236,9 +1310,10 @@ func (us RethinkUserStore) PermanentDelete(userId string) StoreChannel {
 	go func() {
 		result := StoreResult{}
 
-		err := rethink.Table("Users").Get(userId).Delete().Exec(us.rethink, execOpts)
+		err := rethink.Table("Users").Get(userId).Delete().Exec(self.session, execOpts)
 		if err != nil {
-			result.Err = model.NewLocAppError("RethinkUserStore.PermanentDelete", "store.sql_user.permanent_delete.app_error", nil, "userId="+userId+", "+err.Error())
+			result.Err = model.NewLocAppError("RethinkUserStore.PermanentDelete",
+				"store.sql_user.permanent_delete.app_error", nil, "userId="+userId+", "+err.Error())
 		}
 
 		storeChannel <- result
@@ -1248,7 +1323,7 @@ func (us RethinkUserStore) PermanentDelete(userId string) StoreChannel {
 	return storeChannel
 }
 
-func (us RethinkUserStore) AnalyticsUniqueUserCount(teamId string) StoreChannel {
+func (self RethinkUserStore) AnalyticsUniqueUserCount(teamId string) StoreChannel {
 
 	storeChannel := make(StoreChannel)
 
@@ -1268,7 +1343,7 @@ func (us RethinkUserStore) AnalyticsUniqueUserCount(teamId string) StoreChannel 
 		}
 
 		count := 0
-		cursor, err := term.Run(us.rethink, runOpts)
+		cursor, err := term.Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkUserStore.AnalyticsUniqueUserCount",
 				"store.sql_user.analytics_unique_user_count.app_error", nil, err.Error())
@@ -1286,7 +1361,7 @@ func (us RethinkUserStore) AnalyticsUniqueUserCount(teamId string) StoreChannel 
 	return storeChannel
 }
 
-func (us RethinkUserStore) GetUnreadCount(userId string) StoreChannel {
+func (self RethinkUserStore) GetUnreadCount(userId string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {

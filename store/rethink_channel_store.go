@@ -10,30 +10,30 @@ import (
 )
 
 type RethinkChannelStore struct {
-	rethink *rethink.Session
+	session *rethink.Session
 }
 
 func NewRethinkChannelStore(session *rethink.Session) *RethinkChannelStore {
-	s := &RethinkChannelStore{session}
-	s.CreateTablesIfNotExists()
-	s.CreateIndexesIfNotExists()
-	return s
+	store := &RethinkChannelStore{session}
+	store.CreateTablesIfNotExists()
+	store.CreateIndexesIfNotExists()
+	return store
 }
 
-func (s RethinkChannelStore) UpgradeSchemaIfNeeded() {
+func (self RethinkChannelStore) UpgradeSchemaIfNeeded() {
 }
 
-func (s RethinkChannelStore) CreateTablesIfNotExists() {
-	err := rethink.TableCreate("Channels", rethink.TableCreateOpts{PrimaryKey: "Id"}).Exec(s.rethink, execOpts)
+func (self RethinkChannelStore) CreateTablesIfNotExists() {
+	err := rethink.TableCreate("Channels", rethink.TableCreateOpts{PrimaryKey: "Id"}).Exec(self.session, execOpts)
 	handleCreateError("Channels.CreateTablesIfNotExists().", err)
-	err = rethink.TableCreate("ChannelMembers", rethink.TableCreateOpts{PrimaryKey: "Id"}).Exec(s.rethink, execOpts)
+	err = rethink.TableCreate("ChannelMembers", rethink.TableCreateOpts{PrimaryKey: "Id"}).Exec(self.session, execOpts)
 	handleCreateError("ChannelMembers.CreateTablesIfNotExists()", err)
 }
 
-func (s RethinkChannelStore) CreateIndexesIfNotExists() {
-	err := rethink.Table("Channels").IndexCreate("Name").Exec(s.rethink, execOpts)
+func (self RethinkChannelStore) CreateIndexesIfNotExists() {
+	err := rethink.Table("Channels").IndexCreate("Name").Exec(self.session, execOpts)
 	handleCreateError("Channels.CreateIndexesIfNotExists().IndexCreate", err)
-	err = rethink.Table("Channels").IndexWait("Name").Exec(s.rethink, execOpts)
+	err = rethink.Table("Channels").IndexWait("Name").Exec(self.session, execOpts)
 	handleCreateError("Channels.CreateIndexesIfNotExists().IndexWait", err)
 
 	/*s.CreateIndexIfNotExists("idx_channels_team_id", "Channels", "TeamId")
@@ -43,7 +43,7 @@ func (s RethinkChannelStore) CreateIndexesIfNotExists() {
 	s.CreateIndexIfNotExists("idx_channelmembers_user_id", "ChannelMembers", "UserId")*/
 }
 
-func (s RethinkChannelStore) Save(channel *model.Channel) StoreChannel {
+func (self RethinkChannelStore) Save(channel *model.Channel) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
@@ -66,7 +66,7 @@ func (s RethinkChannelStore) Save(channel *model.Channel) StoreChannel {
 						dLock.UnLock(channel.Name)
 					}()
 					channel.PreSave()
-					result = s.saveChannelT(channel)
+					result = self.saveChannelT(channel)
 				}
 			}
 		}
@@ -78,7 +78,7 @@ func (s RethinkChannelStore) Save(channel *model.Channel) StoreChannel {
 	return storeChannel
 }
 
-func (s RethinkChannelStore) SaveDirectChannel(channel *model.Channel, member1 *model.ChannelMember, member2 *model.ChannelMember) StoreChannel {
+func (self RethinkChannelStore) SaveDirectChannel(channel *model.Channel, member1 *model.ChannelMember, member2 *model.ChannelMember) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
@@ -124,14 +124,14 @@ func (s RethinkChannelStore) SaveDirectChannel(channel *model.Channel, member1 *
 			},
 		}
 
-		watch, err := rethink.Table("Transactions").Changes().Run(s.rethink)
+		watch, err := rethink.Table("Transactions").Changes().Run(self.session)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkChannelStore.SaveDirectChannel",
 				"store.rethink_channel.save_direct_channel.watch.app_error", nil, "")
 		}
 
 		newTransaction.PreSave()
-		_, err = rethink.Table("Transactions").Insert(newTransaction).RunWrite(s.rethink)
+		_, err = rethink.Table("Transactions").Insert(newTransaction).RunWrite(self.session)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkChannelStore.SaveDirectChannel",
 				"store.rethink_channel.save_direct_channel.new_transaction.app_error", nil, "")
@@ -164,7 +164,7 @@ func (s RethinkChannelStore) SaveDirectChannel(channel *model.Channel, member1 *
 	return storeChannel
 }
 
-func (s RethinkChannelStore) HandleDirectChannelTransaction(change *model.Transaction, update func(*model.Transaction) error) error {
+func (self RethinkChannelStore) HandleDirectChannelTransaction(change *model.Transaction, update func(*model.Transaction) error) error {
 	var result error
 	for {
 		if change.State != "new" {
@@ -183,7 +183,7 @@ func (s RethinkChannelStore) HandleDirectChannelTransaction(change *model.Transa
 				return err
 			}
 
-			result := s.saveChannelT(transaction.Channel)
+			result := self.saveChannelT(transaction.Channel)
 			if result.Err != nil {
 				if !strings.Contains("exists", result.Err.Message) {
 					change.ErrorStr = result.Err.Error()
@@ -201,7 +201,7 @@ func (s RethinkChannelStore) HandleDirectChannelTransaction(change *model.Transa
 				return err
 			}
 
-			result := s.saveMemberT(transaction.Members[0])
+			result := self.saveMemberT(transaction.Members[0])
 			if result.Err != nil {
 				return result.Err
 			}
@@ -215,7 +215,7 @@ func (s RethinkChannelStore) HandleDirectChannelTransaction(change *model.Transa
 			if err != nil {
 				return err
 			}
-			result := s.saveMemberT(transaction.Members[1])
+			result := self.saveMemberT(transaction.Members[1])
 			if result.Err != nil {
 				return result.Err
 			}
@@ -226,13 +226,13 @@ func (s RethinkChannelStore) HandleDirectChannelTransaction(change *model.Transa
 	return nil
 }
 
-func (s RethinkChannelStore) doesChannelExist(channel *model.Channel) StoreResult {
+func (self RethinkChannelStore) doesChannelExist(channel *model.Channel) StoreResult {
 	result := StoreResult{}
 
 	cursor, err := rethink.Table("Channels").Filter(
 		rethink.Row.Field("Name").Eq(channel.Name).
 			And(rethink.Row.Field("TeamId").Eq(channel.TeamId))).
-		Run(s.rethink, runOpts)
+		Run(self.session, runOpts)
 	if err != nil {
 		result.Err = model.NewLocAppError("RethinkChannelStore.Save",
 			"store.rethink_channel.save.does_channel.exist.app_error", nil,
@@ -245,6 +245,7 @@ func (s RethinkChannelStore) doesChannelExist(channel *model.Channel) StoreResul
 			result.Err = model.NewLocAppError("RethinkChannelStore.Save",
 				"store.rethink_channel.save_channel.exists.cursor.app_error", nil,
 				"id="+channel.Id+", "+err.Error())
+			cursor.Close()
 			return result
 		} else {
 			// If it was a previously deleted channel, return the deleted channel
@@ -261,10 +262,11 @@ func (s RethinkChannelStore) doesChannelExist(channel *model.Channel) StoreResul
 			}
 		}
 	}
+	cursor.Close()
 	return result
 }
 
-func (s RethinkChannelStore) saveChannelT(channel *model.Channel) StoreResult {
+func (self RethinkChannelStore) saveChannelT(channel *model.Channel) StoreResult {
 	result := StoreResult{}
 
 	if result.Err = channel.IsValid(); result.Err != nil {
@@ -278,7 +280,7 @@ func (s RethinkChannelStore) saveChannelT(channel *model.Channel) StoreResult {
 			rethink.Row.Field("TeamId").Eq(channel.TeamId).
 				And(rethink.Row.Field("Type").Eq("O").Or(rethink.Row.Field("Type").Eq("P"))).
 				And(rethink.Row.Field("DeleteAt").Eq(0))).
-			Count().Run(s.rethink, runOpts)
+			Count().Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkChannelStore.Save",
 				"store.rethink_channel.save_channel.current_count.app_error", nil,
@@ -288,21 +290,24 @@ func (s RethinkChannelStore) saveChannelT(channel *model.Channel) StoreResult {
 			result.Err = model.NewLocAppError("RethinkChannelStore.Save",
 				"store.rethink_channel.save_channel.current_count.cursor.app_error", nil,
 				"teamId="+channel.TeamId+", "+err.Error())
+			cursor.Close()
 			return result
 		} else if count > 1000 {
 			result.Err = model.NewLocAppError("RethinkChannelStore.Save",
 				"store.rethink_channel.save_channel.limit.app_error", nil, "teamId="+channel.TeamId)
+			cursor.Close()
 			return result
 		}
+		cursor.Close()
 	}
 
-	exists := s.doesChannelExist(channel)
+	exists := self.doesChannelExist(channel)
 	if exists.Err != nil {
 		return exists
 	}
 
 	// No Channel with this name exists
-	_, err := rethink.Table("Channels").Get(channel.Id).Replace(channel).RunWrite(s.rethink, runOpts)
+	_, err := rethink.Table("Channels").Get(channel.Id).Replace(channel).RunWrite(self.session, runOpts)
 	if err != nil {
 		result.Err = model.NewLocAppError("RethinkChannelStore.Save",
 			"store.rethink_channel.save_channel.insert.app_error", nil, "id="+channel.Id+", "+err.Error())
@@ -313,7 +318,7 @@ func (s RethinkChannelStore) saveChannelT(channel *model.Channel) StoreResult {
 	return result
 }
 
-func (s RethinkChannelStore) Update(channel *model.Channel) StoreChannel {
+func (self RethinkChannelStore) Update(channel *model.Channel) StoreChannel {
 
 	storeChannel := make(StoreChannel)
 
@@ -338,7 +343,7 @@ func (s RethinkChannelStore) Update(channel *model.Channel) StoreChannel {
 			}
 			defer func() { dLock.UnLock(channel.TeamId) }()
 
-			exists := s.doesChannelExist(channel)
+			exists := self.doesChannelExist(channel)
 			if exists.Err != nil {
 				// If this update results in same name on different channels
 				if exists.Data.(*model.Channel).Id != channel.Id {
@@ -349,7 +354,7 @@ func (s RethinkChannelStore) Update(channel *model.Channel) StoreChannel {
 		}
 
 		if changed, err := rethink.Table("Channels").Get(channel.Id).Update(channel).
-			RunWrite(s.rethink, runOpts); err != nil {
+			RunWrite(self.session, runOpts); err != nil {
 			result.Err = model.NewLocAppError("RethinkChannelStore.Update",
 				"store.rethink_channel.update.updating.app_error", nil,
 				"id="+channel.Id+", "+err.Error())
@@ -368,7 +373,7 @@ func (s RethinkChannelStore) Update(channel *model.Channel) StoreChannel {
 	return storeChannel
 }
 
-func (s RethinkChannelStore) extraUpdated(channel *model.Channel) StoreChannel {
+func (self RethinkChannelStore) extraUpdated(channel *model.Channel) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
@@ -378,7 +383,7 @@ func (s RethinkChannelStore) extraUpdated(channel *model.Channel) StoreChannel {
 
 		changed, err := rethink.Table("Channels").Get(channel.Id).
 			Update(map[string]interface{}{"ExtraUpdateAt": channel.ExtraUpdateAt}).
-			RunWrite(s.rethink, runOpts)
+			RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkChannelStore.extraUpdated",
 				"store.rethink_channel.extra_updated.app_error", nil,
@@ -396,22 +401,23 @@ func (s RethinkChannelStore) extraUpdated(channel *model.Channel) StoreChannel {
 	return storeChannel
 }
 
-func (s RethinkChannelStore) Get(id string) StoreChannel {
-	return s.get(id, false)
+func (self RethinkChannelStore) Get(id string) StoreChannel {
+	return self.get(id, false)
 }
 
-func (s RethinkChannelStore) GetFromMaster(id string) StoreChannel {
-	return s.get(id, true)
+func (self RethinkChannelStore) GetFromMaster(id string) StoreChannel {
+	return self.get(id, true)
 }
 
-func (s RethinkChannelStore) get(id string, master bool) StoreChannel {
+func (self RethinkChannelStore) get(id string, master bool) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
 		result := StoreResult{}
 		channel := model.Channel{}
 
-		if cursor, err := rethink.Table("Channels").Get(id).Run(s.rethink, runOpts); err != nil {
+		cursor, err := rethink.Table("Channels").Get(id).Run(self.session, runOpts)
+		if err != nil {
 			result.Err = model.NewLocAppError("RethinkChannelStore.Get",
 				"store.rethink_channel.get.find.app_error", nil, "id="+id+", "+err.Error())
 		} else if cursor.IsNil() {
@@ -423,7 +429,9 @@ func (s RethinkChannelStore) get(id string, master bool) StoreChannel {
 		} else {
 			result.Data = &channel
 		}
-
+		if cursor != nil {
+			cursor.Close()
+		}
 		storeChannel <- result
 		close(storeChannel)
 	}()
@@ -431,7 +439,7 @@ func (s RethinkChannelStore) get(id string, master bool) StoreChannel {
 	return storeChannel
 }
 
-func (s RethinkChannelStore) Delete(channelId string, time int64) StoreChannel {
+func (self RethinkChannelStore) Delete(channelId string, time int64) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
@@ -439,7 +447,7 @@ func (s RethinkChannelStore) Delete(channelId string, time int64) StoreChannel {
 
 		if changed, err := rethink.Table("Channels").Get(channelId).
 			Update(map[string]interface{}{"DeleteAt": time, "UpdateAt": time}).
-			RunWrite(s.rethink, runOpts); err != nil {
+			RunWrite(self.session, runOpts); err != nil {
 			result.Err = model.NewLocAppError("RethinkChannelStore.Delete",
 				"store.rethink_channel.delete.channel.app_error", nil,
 				"id="+channelId+", err="+err.Error())
@@ -456,14 +464,14 @@ func (s RethinkChannelStore) Delete(channelId string, time int64) StoreChannel {
 	return storeChannel
 }
 
-func (s RethinkChannelStore) PermanentDeleteByTeam(teamId string) StoreChannel {
+func (self RethinkChannelStore) PermanentDeleteByTeam(teamId string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
 		result := StoreResult{}
 
 		if changed, err := rethink.Table("Channels").Filter(rethink.Row.Field("TeamId").Eq(teamId)).Delete().
-			RunWrite(s.rethink, runOpts); err != nil {
+			RunWrite(self.session, runOpts); err != nil {
 			result.Err = model.NewLocAppError("RethinkChannelStore.PermanentDeleteByTeam",
 				"store.rethink_channel.permanent_delete_by_team.app_error", nil,
 				"teamId="+teamId+", "+err.Error())
@@ -480,7 +488,7 @@ func (s RethinkChannelStore) PermanentDeleteByTeam(teamId string) StoreChannel {
 	return storeChannel
 }
 
-func (s RethinkChannelStore) GetChannels(teamId string, userId string) StoreChannel {
+func (self RethinkChannelStore) GetChannels(teamId string, userId string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
@@ -488,7 +496,7 @@ func (s RethinkChannelStore) GetChannels(teamId string, userId string) StoreChan
 
 		// "SELECT * FROM Channels, ChannelMembers WHERE Id = ChannelId AND UserId = :UserId
 		// AND DeleteAt = 0 AND (TeamId = :TeamId OR TeamId = '') ORDER BY DisplayName"
-		channelList, err := s.getChannelsForUser(teamId, userId)
+		channelList, err := self.getChannelsForUser(teamId, userId)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkChannelStore.GetChannels",
 				"store.rethink_channel.get_channels.get.app_error", nil,
@@ -510,7 +518,7 @@ func (s RethinkChannelStore) GetChannels(teamId string, userId string) StoreChan
 	return storeChannel
 }
 
-func (s RethinkChannelStore) getChannelsForUser(teamId string, userId string) (*model.ChannelList, error) {
+func (self RethinkChannelStore) getChannelsForUser(teamId string, userId string) (*model.ChannelList, error) {
 	// "SELECT * FROM Channels, ChannelMembers WHERE Id = ChannelId AND UserId = :UserId AND DeleteAt = 0
 	// AND (TeamId = :TeamId OR TeamId = '') ORDER BY DisplayName"
 	cursor, err := rethink.Table("ChannelMembers").EqJoin("ChannelId", rethink.Table("Channels")).
@@ -519,7 +527,7 @@ func (s RethinkChannelStore) getChannelsForUser(teamId string, userId string) (*
 		rethink.Row.Field("UserId").Eq(userId).And(rethink.Row.Field("DeleteAt").Eq(0)).
 			And(rethink.Row.Field("TeamId").Eq(teamId).Or(rethink.Row.Field("TeamId").Eq("")))).
 		OrderBy(rethink.Row.Field("DisplayName")).
-		Run(s.rethink, runOpts)
+		Run(self.session, runOpts)
 	if err != nil {
 		return nil, err
 	}
@@ -553,14 +561,14 @@ func (s RethinkChannelStore) getChannelsForUser(teamId string, userId string) (*
 }
 
 // Returns a list of all channels in the team, the user is currently not already in
-func (s RethinkChannelStore) GetMoreChannels(teamId string, userId string) StoreChannel {
+func (self RethinkChannelStore) GetMoreChannels(teamId string, userId string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
 		result := StoreResult{}
 
 		// Get a list of Channels available to the user
-		userChannels, err := s.getChannelsForUser(teamId, userId)
+		userChannels, err := self.getChannelsForUser(teamId, userId)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkChannelStore.GetMoreChannels",
 				"store.rethink_channel.get_channels_for_user.app_error", nil,
@@ -582,7 +590,7 @@ func (s RethinkChannelStore) GetMoreChannels(teamId string, userId string) Store
 				And(channel.Field("TeamId").Eq(teamId)).
 				And(channel.Field("DeleteAt").Eq(0)).
 				And(channel.Field("Type").Eq("O"))
-		}).OrderBy(rethink.Row.Field("DisplayName")).Run(s.rethink, runOpts)
+		}).OrderBy(rethink.Row.Field("DisplayName")).Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkChannelStore.GetMoreChannels",
 				"store.rethink_channel.get_more_channels.get.app_error", nil,
@@ -595,7 +603,6 @@ func (s RethinkChannelStore) GetMoreChannels(teamId string, userId string) Store
 			result.Data = &model.ChannelList{data, make(map[string]*model.ChannelMember)}
 		}
 
-		// TODO: thrawn - Do this for the rest of the code base
 		if cursor != nil {
 			cursor.Close()
 		}
@@ -606,7 +613,7 @@ func (s RethinkChannelStore) GetMoreChannels(teamId string, userId string) Store
 	return storeChannel
 }
 
-func (s RethinkChannelStore) GetChannelCounts(teamId string, userId string) StoreChannel {
+func (self RethinkChannelStore) GetChannelCounts(teamId string, userId string) StoreChannel {
 	storeChannel := make(StoreChannel)
 	// SELECT Id, TotalMsgCount, UpdateAt FROM Channels WHERE Id IN (SELECT ChannelId FROM ChannelMembers
 	// WHERE UserId = :UserId) AND (TeamId = :TeamId OR TeamId = '') AND DeleteAt = 0 ORDER BY DisplayName
@@ -614,7 +621,7 @@ func (s RethinkChannelStore) GetChannelCounts(teamId string, userId string) Stor
 	go func() {
 		result := StoreResult{}
 
-		userChannels, err := s.getChannelsForUser(teamId, userId)
+		userChannels, err := self.getChannelsForUser(teamId, userId)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkChannelStore.GetChannelCounts",
 				"store.rethink_channel.get_channels_for_user.app_error", nil,
@@ -638,7 +645,7 @@ func (s RethinkChannelStore) GetChannelCounts(teamId string, userId string) Stor
 	return storeChannel
 }
 
-func (s RethinkChannelStore) GetByName(teamId string, name string) StoreChannel {
+func (self RethinkChannelStore) GetByName(teamId string, name string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	// SELECT * FROM Channels WHERE (TeamId = :TeamId OR TeamId = '') AND Name = :Name AND DeleteAt = 0"
@@ -651,7 +658,7 @@ func (s RethinkChannelStore) GetByName(teamId string, name string) StoreChannel 
 		cursor, err := rethink.Table("Channels").Filter(
 			rethink.Row.Field("Name").Eq(name).And(rethink.Row.Field("DeleteAt").Eq(0)).
 				And(rethink.Row.Field("TeamId").Eq(teamId).Or(rethink.Row.Field("TeamId").Eq("")))).
-			Run(s.rethink, runOpts)
+			Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkChannelStore.GetByName",
 				"store.rethink_channel.get_by_name.existing.app_error", nil,
@@ -670,7 +677,9 @@ func (s RethinkChannelStore) GetByName(teamId string, name string) StoreChannel 
 			result.Data = &channel
 		}
 
-		cursor.Close()
+		if cursor != nil {
+			cursor.Close()
+		}
 		storeChannel <- result
 		close(storeChannel)
 	}()
@@ -678,8 +687,8 @@ func (s RethinkChannelStore) GetByName(teamId string, name string) StoreChannel 
 	return storeChannel
 }
 
-func (s RethinkChannelStore) getChannel(id string) (*model.Channel, error) {
-	cursor, err := rethink.Table("Channels").Get(id).Run(s.rethink, runOpts)
+func (self RethinkChannelStore) getChannel(id string) (*model.Channel, error) {
+	cursor, err := rethink.Table("Channels").Get(id).Run(self.session, runOpts)
 	if err != nil {
 		return nil, err
 	}
@@ -687,18 +696,19 @@ func (s RethinkChannelStore) getChannel(id string) (*model.Channel, error) {
 	if err = cursor.One(&channel); err != nil {
 		return nil, err
 	}
+	cursor.Close()
 	return &channel, nil
 }
 
-func (s RethinkChannelStore) SaveMember(member *model.ChannelMember) StoreChannel {
+func (self RethinkChannelStore) SaveMember(member *model.ChannelMember) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
 		var result StoreResult
 		member.PreSave()
-		result = s.saveMemberT(member)
+		result = self.saveMemberT(member)
 		if result.Err == nil {
-			channel, err := s.getChannel(member.ChannelId)
+			channel, err := self.getChannel(member.ChannelId)
 			if err != nil {
 				result.Err = model.NewLocAppError("RethinkChannelStore.SaveMember",
 					"store.rethink_channel.save_member.getChannel.app_error", nil,
@@ -706,7 +716,7 @@ func (s RethinkChannelStore) SaveMember(member *model.ChannelMember) StoreChanne
 						member.UserId+", "+err.Error())
 			} else {
 				// If successful record members have changed in channel
-				if mu := <-s.extraUpdated(channel); mu.Err != nil {
+				if mu := <-self.extraUpdated(channel); mu.Err != nil {
 					result.Err = mu.Err
 				}
 			}
@@ -719,14 +729,14 @@ func (s RethinkChannelStore) SaveMember(member *model.ChannelMember) StoreChanne
 	return storeChannel
 }
 
-func (s RethinkChannelStore) saveMemberT(member *model.ChannelMember) StoreResult {
+func (self RethinkChannelStore) saveMemberT(member *model.ChannelMember) StoreResult {
 	result := StoreResult{}
 
 	if result.Err = member.IsValid(); result.Err != nil {
 		return result
 	}
 	changed, err := rethink.Table("ChannelMembers").Get(member.Id).
-		Replace(member).RunWrite(s.rethink, runOpts)
+		Replace(member).RunWrite(self.session, runOpts)
 	if err != nil {
 		result.Err = model.NewLocAppError("RethinkChannelStore.SaveMember",
 			"store.rethink_channel.save_member.save.app_error", nil,
@@ -740,7 +750,7 @@ func (s RethinkChannelStore) saveMemberT(member *model.ChannelMember) StoreResul
 	return result
 }
 
-func (s RethinkChannelStore) UpdateMember(member *model.ChannelMember) StoreChannel {
+func (self RethinkChannelStore) UpdateMember(member *model.ChannelMember) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
@@ -758,7 +768,7 @@ func (s RethinkChannelStore) UpdateMember(member *model.ChannelMember) StoreChan
 		changed, err := rethink.Table("ChannelMembers").Filter(
 			rethink.Row.Field("ChannelId").Eq(member.ChannelId).
 				And(rethink.Row.Field("UserId").Eq(member.UserId))).
-			Update(member).RunWrite(s.rethink, runOpts)
+			Update(member).RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkChannelStore.UpdateMember",
 				"store.rethink_channel.update_member.app_error", nil,
@@ -778,7 +788,7 @@ func (s RethinkChannelStore) UpdateMember(member *model.ChannelMember) StoreChan
 	return storeChannel
 }
 
-func (s RethinkChannelStore) GetMembers(channelId string) StoreChannel {
+func (self RethinkChannelStore) GetMembers(channelId string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	// SELECT * FROM ChannelMembers WHERE ChannelId = :ChannelId
@@ -788,7 +798,7 @@ func (s RethinkChannelStore) GetMembers(channelId string) StoreChannel {
 		var members []model.ChannelMember
 		cursor, err := rethink.Table("ChannelMembers").Filter(
 			rethink.Row.Field("ChannelId").Eq(channelId)).
-			Run(s.rethink, runOpts)
+			Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkChannelStore.GetMembers",
 				"store.rethink_channel.get_members.app_error", nil,
@@ -801,6 +811,9 @@ func (s RethinkChannelStore) GetMembers(channelId string) StoreChannel {
 			result.Data = members
 		}
 
+		if cursor != nil {
+			cursor.Close()
+		}
 		storeChannel <- result
 		close(storeChannel)
 	}()
@@ -808,7 +821,7 @@ func (s RethinkChannelStore) GetMembers(channelId string) StoreChannel {
 	return storeChannel
 }
 
-func (s RethinkChannelStore) GetMember(channelId string, userId string) StoreChannel {
+func (self RethinkChannelStore) GetMember(channelId string, userId string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	// SELECT * FROM ChannelMembers WHERE ChannelId = :ChannelId AND UserId = :UserId"
@@ -819,7 +832,7 @@ func (s RethinkChannelStore) GetMember(channelId string, userId string) StoreCha
 		cursor, err := rethink.Table("ChannelMembers").Filter(
 			rethink.Row.Field("ChannelId").Eq(member.ChannelId).
 				And(rethink.Row.Field("UserId").Eq(member.UserId))).
-			Run(s.rethink, runOpts)
+			Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkChannelStore.GetMember",
 				"store.rethink_channel.get_member.app_error", nil,
@@ -838,6 +851,9 @@ func (s RethinkChannelStore) GetMember(channelId string, userId string) StoreCha
 			result.Data = member
 		}
 
+		if cursor != nil {
+			cursor.Close()
+		}
 		storeChannel <- result
 		close(storeChannel)
 	}()
@@ -845,7 +861,7 @@ func (s RethinkChannelStore) GetMember(channelId string, userId string) StoreCha
 	return storeChannel
 }
 
-func (s RethinkChannelStore) GetMemberCount(channelId string) StoreChannel {
+func (self RethinkChannelStore) GetMemberCount(channelId string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	// SELECT count(*) FROM ChannelMembers, Users WHERE ChannelMembers.UserId = Users.Id
@@ -856,7 +872,7 @@ func (s RethinkChannelStore) GetMemberCount(channelId string) StoreChannel {
 		var count int64
 		cursor, err := rethink.Table("ChannelMembers").Filter(
 			rethink.Row.Field("ChannelId").Eq(channelId)).
-			Count().Run(s.rethink, runOpts)
+			Count().Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkChannelStore.GetMemberCount",
 				"store.rethink_channel.get_member_count.app_error", nil,
@@ -869,6 +885,9 @@ func (s RethinkChannelStore) GetMemberCount(channelId string) StoreChannel {
 			result.Data = count
 		}
 
+		if cursor != nil {
+			cursor.Close()
+		}
 		storeChannel <- result
 		close(storeChannel)
 	}()
@@ -876,7 +895,7 @@ func (s RethinkChannelStore) GetMemberCount(channelId string) StoreChannel {
 	return storeChannel
 }
 
-func (s RethinkChannelStore) GetExtraMembers(channelId string, limit int) StoreChannel {
+func (self RethinkChannelStore) GetExtraMembers(channelId string, limit int) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	// SELECT Id, Nickname, Email, ChannelMembers.Roles, Username FROM ChannelMembers, Users
@@ -894,7 +913,7 @@ func (s RethinkChannelStore) GetExtraMembers(channelId string, limit int) StoreC
 		if limit != -1 {
 			term.Limit(limit)
 		}
-		cursor, err := term.Run(s.rethink, runOpts)
+		cursor, err := term.Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkChannelStore.GetExtraMembers",
 				"store.rethink_channel.get_extra_members.app_error", nil,
@@ -910,6 +929,9 @@ func (s RethinkChannelStore) GetExtraMembers(channelId string, limit int) StoreC
 			result.Data = members
 		}
 
+		if cursor != nil {
+			cursor.Close()
+		}
 		storeChannel <- result
 		close(storeChannel)
 	}()
@@ -917,7 +939,7 @@ func (s RethinkChannelStore) GetExtraMembers(channelId string, limit int) StoreC
 	return storeChannel
 }
 
-func (s RethinkChannelStore) RemoveMember(channelId string, userId string) StoreChannel {
+func (self RethinkChannelStore) RemoveMember(channelId string, userId string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	// DELETE FROM ChannelMembers WHERE ChannelId = :ChannelId AND UserId = :UserId
@@ -925,7 +947,7 @@ func (s RethinkChannelStore) RemoveMember(channelId string, userId string) Store
 		result := StoreResult{}
 
 		// Grab the channel we are saving this member to
-		if cr := <-s.Get(channelId); cr.Err != nil {
+		if cr := <-self.Get(channelId); cr.Err != nil {
 			result.Err = cr.Err
 		} else {
 			channel := cr.Data.(*model.Channel)
@@ -933,7 +955,7 @@ func (s RethinkChannelStore) RemoveMember(channelId string, userId string) Store
 			changed, err := rethink.Table("ChannelMembers").Filter(
 				rethink.Row.Field("ChannelId").Eq(channelId).
 					And(rethink.Row.Field("UserId").Eq(userId))).
-				Delete().RunWrite(s.rethink, runOpts)
+				Delete().RunWrite(self.session, runOpts)
 			if err != nil {
 				result.Err = model.NewLocAppError("RethinkChannelStore.RemoveMember",
 					"store.rethink_channel.remove_member.app_error", nil,
@@ -944,7 +966,7 @@ func (s RethinkChannelStore) RemoveMember(channelId string, userId string) Store
 					"channel_id="+channelId+", user_id="+userId+", "+changed.FirstError)
 			} else {
 				// If sucessfull record members have changed in channel
-				if mu := <-s.extraUpdated(channel); mu.Err != nil {
+				if mu := <-self.extraUpdated(channel); mu.Err != nil {
 					result.Err = mu.Err
 				}
 			}
@@ -957,7 +979,7 @@ func (s RethinkChannelStore) RemoveMember(channelId string, userId string) Store
 	return storeChannel
 }
 
-func (s RethinkChannelStore) PermanentDeleteMembersByUser(userId string) StoreChannel {
+func (self RethinkChannelStore) PermanentDeleteMembersByUser(userId string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	// DELETE FROM ChannelMembers WHERE UserId = :UserId", map[string]interface{}{"UserId": userId}); err != nil {
@@ -966,7 +988,7 @@ func (s RethinkChannelStore) PermanentDeleteMembersByUser(userId string) StoreCh
 
 		_, err := rethink.Table("ChannelMembers").Filter(
 			rethink.Row.Field("UserId").Eq(userId)).
-			Delete().RunWrite(s.rethink, runOpts)
+			Delete().RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkChannelStore.RemoveMember",
 				"store.rethink_channel.permanent_delete_members_by_user.app_error", nil,
@@ -980,7 +1002,7 @@ func (s RethinkChannelStore) PermanentDeleteMembersByUser(userId string) StoreCh
 	return storeChannel
 }
 
-func (s RethinkChannelStore) CheckPermissionsToNoTeam(channelId string, userId string) StoreChannel {
+func (self RethinkChannelStore) CheckPermissionsToNoTeam(channelId string, userId string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	// SELECT COUNT(0) FROM Channels, ChannelMembers WHERE Channels.Id = ChannelMembers.ChannelId
@@ -993,7 +1015,7 @@ func (s RethinkChannelStore) CheckPermissionsToNoTeam(channelId string, userId s
 			Without(map[string]string{"left": "Id"}).Zip().Filter(
 			rethink.Row.Field("UserId").Eq(userId).And(rethink.Row.Field("DeleteAt").Eq(0)).
 				And(rethink.Row.Field("ChannelId").Eq(channelId))).
-			Count().Run(s.rethink, runOpts)
+			Count().Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkChannelStore.CheckPermissionsTo",
 				"store.rethink_channel.check_permissions.app_error", nil,
@@ -1006,6 +1028,9 @@ func (s RethinkChannelStore) CheckPermissionsToNoTeam(channelId string, userId s
 			result.Data = count
 		}
 
+		if cursor != nil {
+			cursor.Close()
+		}
 		storeChannel <- result
 		close(storeChannel)
 	}()
@@ -1013,7 +1038,7 @@ func (s RethinkChannelStore) CheckPermissionsToNoTeam(channelId string, userId s
 	return storeChannel
 }
 
-func (s RethinkChannelStore) CheckPermissionsTo(teamId string, channelId string, userId string) StoreChannel {
+func (self RethinkChannelStore) CheckPermissionsTo(teamId string, channelId string, userId string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	//`SELECT COUNT(0) FROM Channels, ChannelMembers WHERE Channels.Id = ChannelMembers.ChannelId
@@ -1028,7 +1053,7 @@ func (s RethinkChannelStore) CheckPermissionsTo(teamId string, channelId string,
 			rethink.Row.Field("UserId").Eq(userId).And(rethink.Row.Field("DeleteAt").Eq(0)).
 				And(rethink.Row.Field("ChannelId").Eq(channelId)).
 				And(rethink.Row.Field("TeamId").Eq(teamId).Or(rethink.Row.Field("TeamId").Eq("")))).
-			Count().Run(s.rethink, runOpts)
+			Count().Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkChannelStore.CheckPermissionsTo",
 				"store.rethink_channel.check_permissions.app_error", nil,
@@ -1041,6 +1066,9 @@ func (s RethinkChannelStore) CheckPermissionsTo(teamId string, channelId string,
 			result.Data = count
 		}
 
+		if cursor != nil {
+			cursor.Close()
+		}
 		storeChannel <- result
 		close(storeChannel)
 	}()
@@ -1048,7 +1076,7 @@ func (s RethinkChannelStore) CheckPermissionsTo(teamId string, channelId string,
 	return storeChannel
 }
 
-func (s RethinkChannelStore) CheckPermissionsToByName(teamId string, channelName string, userId string) StoreChannel {
+func (self RethinkChannelStore) CheckPermissionsToByName(teamId string, channelName string, userId string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	//`SELECT Channels.Id FROM Channels, ChannelMembers WHERE Channels.Id = ChannelMembers.ChannelId
@@ -1063,7 +1091,7 @@ func (s RethinkChannelStore) CheckPermissionsToByName(teamId string, channelName
 			rethink.Row.Field("UserId").Eq(userId).And(rethink.Row.Field("DeleteAt").Eq(0)).
 				And(rethink.Row.Field("Name").Eq(channelName)).
 				And(rethink.Row.Field("TeamId").Eq(teamId).Or(rethink.Row.Field("TeamId").Eq("")))).
-			Run(s.rethink, runOpts)
+			Run(self.session, runOpts)
 
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkChannelStore.CheckPermissionsToByName",
@@ -1078,6 +1106,9 @@ func (s RethinkChannelStore) CheckPermissionsToByName(teamId string, channelName
 			result.Data = channel.Id
 		}
 
+		if cursor != nil {
+			cursor.Close()
+		}
 		storeChannel <- result
 		close(storeChannel)
 	}()
@@ -1085,7 +1116,7 @@ func (s RethinkChannelStore) CheckPermissionsToByName(teamId string, channelName
 	return storeChannel
 }
 
-func (s RethinkChannelStore) CheckOpenChannelPermissions(teamId string, channelId string) StoreChannel {
+func (self RethinkChannelStore) CheckOpenChannelPermissions(teamId string, channelId string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	// SELECT COUNT(0) FROM Channels WHERE Channels.Id = :ChannelId
@@ -1096,7 +1127,7 @@ func (s RethinkChannelStore) CheckOpenChannelPermissions(teamId string, channelI
 		var count int64
 		cursor, err := rethink.Table("Channels").Filter(rethink.Row.Field("Id").Eq(channelId).
 			And(rethink.Row.Field("TeamId").Eq(teamId))).
-			Count().Run(s.rethink, runOpts)
+			Count().Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkChannelStore.CheckOpenChannelPermissions",
 				"store.rethink_channel.check_open_channel_permissions.app_error", nil,
@@ -1109,6 +1140,9 @@ func (s RethinkChannelStore) CheckOpenChannelPermissions(teamId string, channelI
 			result.Data = count
 		}
 
+		if cursor != nil {
+			cursor.Close()
+		}
 		storeChannel <- result
 		close(storeChannel)
 	}()
@@ -1116,7 +1150,7 @@ func (s RethinkChannelStore) CheckOpenChannelPermissions(teamId string, channelI
 	return storeChannel
 }
 
-func (s RethinkChannelStore) UpdateLastViewedAt(channelId string, userId string) StoreChannel {
+func (self RethinkChannelStore) UpdateLastViewedAt(channelId string, userId string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	// UPDATE ChannelMembers SET MentionCount = 0, MsgCount = Channels.TotalMsgCount,
@@ -1134,7 +1168,7 @@ func (s RethinkChannelStore) UpdateLastViewedAt(channelId string, userId string)
 			rethink.Row.Field("UserId").Eq(userId).And(rethink.Row.Field("DeleteAt").Eq(0)).
 				And(rethink.Row.Field("ChannelId").Eq(channelId)).
 				And(rethink.Row.Field("UserId").Eq(userId))).
-			Run(s.rethink, runOpts)
+			Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkChannelStore.UpdateLastViewedAt",
 				"store.rethink_channel.update_last_viewed_at.app_error", nil,
@@ -1150,7 +1184,7 @@ func (s RethinkChannelStore) UpdateLastViewedAt(channelId string, userId string)
 					"MentionCount": 0,
 					"MsgCount":     channel.TotalMsgCount,
 					"LastViewedAt": channel.LastPostAt}).
-				RunWrite(s.rethink, runOpts)
+				RunWrite(self.session, runOpts)
 			if err != nil {
 				result.Err = model.NewLocAppError("RethinkChannelStore.UpdateLastViewedAt",
 					"store.rethink_channel.update_last_viewed_at.update.app_error", nil,
@@ -1167,6 +1201,9 @@ func (s RethinkChannelStore) UpdateLastViewedAt(channelId string, userId string)
 				}*/
 		}
 
+		if cursor != nil {
+			cursor.Close()
+		}
 		storeChannel <- result
 		close(storeChannel)
 	}()
@@ -1174,7 +1211,7 @@ func (s RethinkChannelStore) UpdateLastViewedAt(channelId string, userId string)
 	return storeChannel
 }
 
-func (s RethinkChannelStore) IncrementMentionCount(channelId string, userId string) StoreChannel {
+func (self RethinkChannelStore) IncrementMentionCount(channelId string, userId string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	// UPDATE ChannelMembers SET MentionCount = MentionCount + 1 WHERE
@@ -1185,7 +1222,7 @@ func (s RethinkChannelStore) IncrementMentionCount(channelId string, userId stri
 		changed, err := rethink.Table("ChannelMembers").Filter(rethink.Row.Field("ChannelId").Eq(channelId).
 			And(rethink.Row.Field("UserId").Eq(userId))).Update(map[string]interface{}{
 			"MentionCount": rethink.Row.Field("MentionCount").Add(1).Default(0),
-		}).RunWrite(s.rethink, runOpts)
+		}).RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkChannelStore.IncrementMentionCount",
 				"store.rethink_channel.increment_mention_count.app_error", nil,
@@ -1203,7 +1240,7 @@ func (s RethinkChannelStore) IncrementMentionCount(channelId string, userId stri
 	return storeChannel
 }
 
-func (s RethinkChannelStore) GetForExport(teamId string) StoreChannel {
+func (self RethinkChannelStore) GetForExport(teamId string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	// SELECT * FROM Channels WHERE TeamId = :TeamId AND DeleteAt = 0 AND Type = 'O'
@@ -1213,7 +1250,7 @@ func (s RethinkChannelStore) GetForExport(teamId string) StoreChannel {
 		var data []*model.Channel
 		cursor, err := rethink.Table("Channels").Filter(rethink.Row.Field("TeamId").Eq(teamId).
 			And(rethink.Row.Field("DeletedAt").Eq(0))).And(rethink.Row.Field("Type").Eq("O")).
-			Run(s.rethink, runOpts)
+			Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkChannelStore.GetAllChannels",
 				"store.rethink_channel.get_for_export.app_error", nil,
@@ -1226,6 +1263,9 @@ func (s RethinkChannelStore) GetForExport(teamId string) StoreChannel {
 			result.Data = data
 		}
 
+		if cursor != nil {
+			cursor.Close()
+		}
 		storeChannel <- result
 		close(storeChannel)
 	}()
@@ -1233,7 +1273,7 @@ func (s RethinkChannelStore) GetForExport(teamId string) StoreChannel {
 	return storeChannel
 }
 
-func (s RethinkChannelStore) AnalyticsTypeCount(teamId string, channelType string) StoreChannel {
+func (self RethinkChannelStore) AnalyticsTypeCount(teamId string, channelType string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	// SELECT COUNT(Id) AS Value FROM Channels WHERE Type = :ChannelType AND TeamId = :TeamId
@@ -1249,7 +1289,7 @@ func (s RethinkChannelStore) AnalyticsTypeCount(teamId string, channelType strin
 		}
 
 		var count int64
-		cursor, err := term.Count().Run(s.rethink, runOpts)
+		cursor, err := term.Count().Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkChannelStore.AnalyticsTypeCount",
 				"store.rethink_channel.analytics_type_count.app_error", nil, err.Error())
@@ -1260,6 +1300,9 @@ func (s RethinkChannelStore) AnalyticsTypeCount(teamId string, channelType strin
 			result.Data = count
 		}
 
+		if cursor != nil {
+			cursor.Close()
+		}
 		storeChannel <- result
 		close(storeChannel)
 	}()
@@ -1267,7 +1310,7 @@ func (s RethinkChannelStore) AnalyticsTypeCount(teamId string, channelType strin
 	return storeChannel
 }
 
-func (s RethinkChannelStore) ExtraUpdateByUser(userId string, time int64) StoreChannel {
+func (self RethinkChannelStore) ExtraUpdateByUser(userId string, time int64) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	// UPDATE Channels SET ExtraUpdateAt = :Time WHERE Id IN
@@ -1277,7 +1320,7 @@ func (s RethinkChannelStore) ExtraUpdateByUser(userId string, time int64) StoreC
 
 		channelMembers := make([]*model.ChannelMember, 0)
 		cursor, err := rethink.Table("ChannelMembers").
-			Filter(rethink.Row.Field("UserId").Eq(userId)).Run(s.rethink, runOpts)
+			Filter(rethink.Row.Field("UserId").Eq(userId)).Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkChannelStore.extraUpdated",
 				"store.rethink_channel.extra_updated.app_error", nil, "user_id="+userId+", "+err.Error())
@@ -1285,6 +1328,10 @@ func (s RethinkChannelStore) ExtraUpdateByUser(userId string, time int64) StoreC
 			result.Err = model.NewLocAppError("RethinkChannelStore.extraUpdated",
 				"store.rethink_channel.extra_updated.cursor.app_error", nil,
 				"user_id="+userId+", "+err.Error())
+			cursor.Close()
+			storeChannel <- result
+			close(storeChannel)
+			return
 		}
 
 		channelIds := make([]string, len(channelMembers))
@@ -1294,12 +1341,15 @@ func (s RethinkChannelStore) ExtraUpdateByUser(userId string, time int64) StoreC
 
 		_, err = rethink.Table("Channels").Filter(func(channel rethink.Term) rethink.Term {
 			return rethink.Expr(channelIds).Contains(channel.Field("Id")).Not()
-		}).Update(map[string]interface{}{"ExtraUpdateAt": time}).RunWrite(s.rethink, runOpts)
+		}).Update(map[string]interface{}{"ExtraUpdateAt": time}).RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkChannelStore.extraUpdated",
 				"store.rethink_channel.extra_updated.app_error", nil, "user_id="+userId+", "+err.Error())
 		}
 
+		if cursor != nil {
+			cursor.Close()
+		}
 		storeChannel <- result
 		close(storeChannel)
 	}()

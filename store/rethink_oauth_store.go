@@ -6,7 +6,7 @@ import (
 )
 
 type RethinkOAuthStore struct {
-	rethink *rethink.Session
+	session *rethink.Session
 }
 
 func NewRethinkOAuthStore(session *rethink.Session) OAuthStore {
@@ -16,36 +16,36 @@ func NewRethinkOAuthStore(session *rethink.Session) OAuthStore {
 	return s
 }
 
-func (as RethinkOAuthStore) UpgradeSchemaIfNeeded() {
+func (self RethinkOAuthStore) UpgradeSchemaIfNeeded() {
 }
 
 func (s RethinkOAuthStore) CreateTablesIfNotExists() {
-	err := rethink.TableCreate("OAuthApps", rethink.TableCreateOpts{PrimaryKey: "Id"}).Exec(s.rethink, execOpts)
+	err := rethink.TableCreate("OAuthApps", rethink.TableCreateOpts{PrimaryKey: "Id"}).Exec(s.session, execOpts)
 	handleCreateError("OAuthApps.CreateTablesIfNotExists()", err)
-	err = rethink.TableCreate("OAuthAccessData").Exec(s.rethink, execOpts)
+	err = rethink.TableCreate("OAuthAccessData").Exec(s.session, execOpts)
 	handleCreateError("OAuthAccessData.CreateTablesIfNotExists()", err)
-	err = rethink.TableCreate("OAuthAuthData").Exec(s.rethink, execOpts)
+	err = rethink.TableCreate("OAuthAuthData").Exec(s.session, execOpts)
 	handleCreateError("OAuthAuthData.CreateTablesIfNotExists()", err)
 }
 
-func (as RethinkOAuthStore) CreateIndexesIfNotExists() {
-	err := rethink.Table("OAuthApps").IndexCreate("CreatorId").Exec(as.rethink, execOpts)
+func (self RethinkOAuthStore) CreateIndexesIfNotExists() {
+	err := rethink.Table("OAuthApps").IndexCreate("CreatorId").Exec(self.session, execOpts)
 	handleCreateError("OAuthApps.CreateIndexesIfNotExists().CreatorId.IndexCreate", err)
-	err = rethink.Table("OAuthApps").IndexWait("CreatorId").Exec(as.rethink, execOpts)
+	err = rethink.Table("OAuthApps").IndexWait("CreatorId").Exec(self.session, execOpts)
 	handleCreateError("OAuthApps.CreateIndexesIfNotExists().CreatorId.IndexWait", err)
 
-	err = rethink.Table("OAuthAccessData").IndexCreate("AuthCode").Exec(as.rethink, execOpts)
+	err = rethink.Table("OAuthAccessData").IndexCreate("AuthCode").Exec(self.session, execOpts)
 	handleCreateError("OAuthAccessData.CreateIndexesIfNotExists().AuthCode.IndexCreate", err)
-	err = rethink.Table("OAuthAccessData").IndexWait("AuthCode").Exec(as.rethink, execOpts)
+	err = rethink.Table("OAuthAccessData").IndexWait("AuthCode").Exec(self.session, execOpts)
 	handleCreateError("OAuthAccessData.CreateIndexesIfNotExists().AuthCode.IndexWait", err)
 
-	err = rethink.Table("OAuthAccessData").IndexCreate("Code").Exec(as.rethink, execOpts)
+	err = rethink.Table("OAuthAccessData").IndexCreate("Code").Exec(self.session, execOpts)
 	handleCreateError("OAuthAccessData.CreateIndexesIfNotExists().Code.IndexCreate", err)
-	err = rethink.Table("OAuthAccessData").IndexWait("Code").Exec(as.rethink, execOpts)
+	err = rethink.Table("OAuthAccessData").IndexWait("Code").Exec(self.session, execOpts)
 	handleCreateError("OAuthAccessData.CreateIndexesIfNotExists().Code.IndexWait", err)
 }
 
-func (as RethinkOAuthStore) SaveApp(app *model.OAuthApp) StoreChannel {
+func (self RethinkOAuthStore) SaveApp(app *model.OAuthApp) StoreChannel {
 
 	storeChannel := make(StoreChannel)
 
@@ -67,7 +67,7 @@ func (as RethinkOAuthStore) SaveApp(app *model.OAuthApp) StoreChannel {
 			return
 		}
 
-		changed, err := rethink.Table("OAuthApps").Insert(app).RunWrite(as.rethink, runOpts)
+		changed, err := rethink.Table("OAuthApps").Insert(app).RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkOAuthStore.SaveApp",
 				"store.rethink_oauth.save_app.save.app_error", nil,
@@ -87,7 +87,7 @@ func (as RethinkOAuthStore) SaveApp(app *model.OAuthApp) StoreChannel {
 	return storeChannel
 }
 
-func (as RethinkOAuthStore) UpdateApp(app *model.OAuthApp) StoreChannel {
+func (self RethinkOAuthStore) UpdateApp(app *model.OAuthApp) StoreChannel {
 
 	storeChannel := make(StoreChannel)
 
@@ -103,7 +103,7 @@ func (as RethinkOAuthStore) UpdateApp(app *model.OAuthApp) StoreChannel {
 		}
 
 		var oldApp model.OAuthApp
-		cursor, err := rethink.Table("OAuthApps").Get(app.Id).Run(as.rethink, runOpts)
+		cursor, err := rethink.Table("OAuthApps").Get(app.Id).Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkOAuthStore.UpdateApp",
 				"store.rethink_oauth.update_app.finding.app_error", nil,
@@ -121,7 +121,7 @@ func (as RethinkOAuthStore) UpdateApp(app *model.OAuthApp) StoreChannel {
 			app.CreatorId = oldApp.CreatorId
 
 			changed, err := rethink.Table("OAuthApps").Get(app.Id).Update(app).
-				RunWrite(as.rethink, runOpts)
+				RunWrite(self.session, runOpts)
 			if err != nil {
 				result.Err = model.NewLocAppError("RethinkOAuthStore.UpdateApp",
 					"store.rethink_oauth.update_app.updating.app_error", nil,
@@ -131,7 +131,7 @@ func (as RethinkOAuthStore) UpdateApp(app *model.OAuthApp) StoreChannel {
 					"store.rethink_oauth.update_app.not_updated.app_error", nil,
 					"app_id="+app.Id)
 			} else {
-				result.Data = [2]*model.OAuthApp{app, oldApp}
+				result.Data = [2]*model.OAuthApp{app, &oldApp}
 			}
 		}
 
@@ -142,7 +142,7 @@ func (as RethinkOAuthStore) UpdateApp(app *model.OAuthApp) StoreChannel {
 	return storeChannel
 }
 
-func (as RethinkOAuthStore) GetApp(id string) StoreChannel {
+func (self RethinkOAuthStore) GetApp(id string) StoreChannel {
 
 	storeChannel := make(StoreChannel)
 
@@ -151,7 +151,7 @@ func (as RethinkOAuthStore) GetApp(id string) StoreChannel {
 
 		var app model.OAuthApp
 
-		cursor, err := rethink.Table("OAuthApps").Get(app.Id).Run(as.rethink, runOpts)
+		cursor, err := rethink.Table("OAuthApps").Get(app.Id).Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkOAuthStore.GetApp",
 				"store.rethink_oauth.get_app.finding.app_error", nil, "app_id="+id+", "+err.Error())
@@ -173,7 +173,7 @@ func (as RethinkOAuthStore) GetApp(id string) StoreChannel {
 	return storeChannel
 }
 
-func (as RethinkOAuthStore) GetAppByUser(userId string) StoreChannel {
+func (self RethinkOAuthStore) GetAppByUser(userId string) StoreChannel {
 
 	storeChannel := make(StoreChannel)
 
@@ -183,7 +183,7 @@ func (as RethinkOAuthStore) GetAppByUser(userId string) StoreChannel {
 		var apps []*model.OAuthApp
 
 		cursor, err := rethink.Table("OAuthApps").Filter(rethink.Row.Field("CreatorId").Eq(userId)).
-			Run(as.rethink, runOpts)
+			Run(self.session, runOpts)
 
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkOAuthStore.GetAppByUser",
@@ -204,7 +204,7 @@ func (as RethinkOAuthStore) GetAppByUser(userId string) StoreChannel {
 	return storeChannel
 }
 
-func (as RethinkOAuthStore) SaveAccessData(accessData *model.AccessData) StoreChannel {
+func (self RethinkOAuthStore) SaveAccessData(accessData *model.AccessData) StoreChannel {
 
 	storeChannel := make(StoreChannel)
 
@@ -217,7 +217,7 @@ func (as RethinkOAuthStore) SaveAccessData(accessData *model.AccessData) StoreCh
 			return
 		}
 
-		changed, err := rethink.Table("OAuthAccessData").Insert(accessData).RunWrite(as.rethink, runOpts)
+		changed, err := rethink.Table("OAuthAccessData").Insert(accessData).RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkOAuthStore.SaveAccessData",
 				"store.rethink_oauth.save_access_data.app_error", nil, err.Error())
@@ -235,7 +235,7 @@ func (as RethinkOAuthStore) SaveAccessData(accessData *model.AccessData) StoreCh
 	return storeChannel
 }
 
-func (as RethinkOAuthStore) GetAccessData(token string) StoreChannel {
+func (self RethinkOAuthStore) GetAccessData(token string) StoreChannel {
 
 	storeChannel := make(StoreChannel)
 
@@ -244,7 +244,7 @@ func (as RethinkOAuthStore) GetAccessData(token string) StoreChannel {
 
 		accessData := model.AccessData{}
 		cursor, err := rethink.Table("OAuthAccessData").
-			Filter(rethink.Row.Field("Token").Eq(token)).Run(as.rethink, runOpts)
+			Filter(rethink.Row.Field("Token").Eq(token)).Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkOAuthStore.GetAccessData",
 				"store.rethink_oauth.get_access_data.app_error", nil, err.Error())
@@ -263,7 +263,7 @@ func (as RethinkOAuthStore) GetAccessData(token string) StoreChannel {
 	return storeChannel
 }
 
-func (as RethinkOAuthStore) GetAccessDataByAuthCode(authCode string) StoreChannel {
+func (self RethinkOAuthStore) GetAccessDataByAuthCode(authCode string) StoreChannel {
 
 	storeChannel := make(StoreChannel)
 
@@ -273,7 +273,7 @@ func (as RethinkOAuthStore) GetAccessDataByAuthCode(authCode string) StoreChanne
 		accessData := model.AccessData{}
 
 		cursor, err := rethink.Table("OAuthAccessData").
-			Filter(rethink.Row.Field("AuthCode").Eq(authCode)).Run(as.rethink, runOpts)
+			Filter(rethink.Row.Field("AuthCode").Eq(authCode)).Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkOAuthStore.GetAccessDataByAuthCode",
 				"store.rethink_oauth.get_access_data_by_code.app_error", nil, err.Error())
@@ -294,7 +294,7 @@ func (as RethinkOAuthStore) GetAccessDataByAuthCode(authCode string) StoreChanne
 	return storeChannel
 }
 
-func (as RethinkOAuthStore) RemoveAccessData(token string) StoreChannel {
+func (self RethinkOAuthStore) RemoveAccessData(token string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
@@ -302,7 +302,7 @@ func (as RethinkOAuthStore) RemoveAccessData(token string) StoreChannel {
 
 		_, err := rethink.Table("OAuthAccessData").
 			Filter(rethink.Row.Field("Token").Eq(token)).Delete().
-			RunWrite(as.rethink, runOpts)
+			RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkOAuthStore.RemoveAccessData",
 				"store.rethink_oauth.remove_access_data.app_error", nil, "err="+err.Error())
@@ -315,7 +315,7 @@ func (as RethinkOAuthStore) RemoveAccessData(token string) StoreChannel {
 	return storeChannel
 }
 
-func (as RethinkOAuthStore) SaveAuthData(authData *model.AuthData) StoreChannel {
+func (self RethinkOAuthStore) SaveAuthData(authData *model.AuthData) StoreChannel {
 
 	storeChannel := make(StoreChannel)
 
@@ -328,7 +328,7 @@ func (as RethinkOAuthStore) SaveAuthData(authData *model.AuthData) StoreChannel 
 			close(storeChannel)
 			return
 		}
-		_, err := rethink.Table("OAuthAuthData").Insert(authData).RunWrite(as.rethink, runOpts)
+		_, err := rethink.Table("OAuthAuthData").Insert(authData).RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkOAuthStore.SaveAuthData",
 				"store.rethink_oauth.save_auth_data.app_error", nil, err.Error())
@@ -343,7 +343,7 @@ func (as RethinkOAuthStore) SaveAuthData(authData *model.AuthData) StoreChannel 
 	return storeChannel
 }
 
-func (as RethinkOAuthStore) GetAuthData(code string) StoreChannel {
+func (self RethinkOAuthStore) GetAuthData(code string) StoreChannel {
 
 	storeChannel := make(StoreChannel)
 
@@ -351,7 +351,7 @@ func (as RethinkOAuthStore) GetAuthData(code string) StoreChannel {
 		result := StoreResult{}
 		var authData model.AuthData
 		cursor, err := rethink.Table("OAuthAuthData").
-			Filter(rethink.Row.Field("Code").Eq(code)).Run(as.rethink, runOpts)
+			Filter(rethink.Row.Field("Code").Eq(code)).Run(self.session, runOpts)
 
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkOAuthStore.GetAuthData",
@@ -374,14 +374,14 @@ func (as RethinkOAuthStore) GetAuthData(code string) StoreChannel {
 	return storeChannel
 }
 
-func (as RethinkOAuthStore) RemoveAuthData(code string) StoreChannel {
+func (self RethinkOAuthStore) RemoveAuthData(code string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
 		result := StoreResult{}
 
 		_, err := rethink.Table("OAuthAuthData").
-			Filter(rethink.Row.Field("Code").Eq(code)).Delete().RunWrite(as.rethink, runOpts)
+			Filter(rethink.Row.Field("Code").Eq(code)).Delete().RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkOAuthStore.RemoveAuthData",
 				"store.rethink_oauth.remove_auth_data.app_error", nil, "err="+err.Error())
@@ -394,14 +394,14 @@ func (as RethinkOAuthStore) RemoveAuthData(code string) StoreChannel {
 	return storeChannel
 }
 
-func (as RethinkOAuthStore) PermanentDeleteAuthDataByUser(userId string) StoreChannel {
+func (self RethinkOAuthStore) PermanentDeleteAuthDataByUser(userId string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
 		result := StoreResult{}
 
 		_, err := rethink.Table("OAuthAuthData").
-			Filter(rethink.Row.Field("UserId").Eq(userId)).Delete().RunWrite(as.rethink, runOpts)
+			Filter(rethink.Row.Field("UserId").Eq(userId)).Delete().RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkOAuthStore.RemoveAuthDataByUserId", "store.rethink_oauth.permanent_delete_auth_data_by_user.app_error", nil, "err="+err.Error())
 		}

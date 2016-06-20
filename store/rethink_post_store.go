@@ -10,7 +10,7 @@ import (
 )
 
 type RethinkPostStore struct {
-	rethink *rethink.Session
+	session *rethink.Session
 }
 
 func NewRethinkPostStore(session *rethink.Session) PostStore {
@@ -20,37 +20,37 @@ func NewRethinkPostStore(session *rethink.Session) PostStore {
 	return s
 }
 
-func (s RethinkPostStore) UpgradeSchemaIfNeeded() {
+func (self RethinkPostStore) UpgradeSchemaIfNeeded() {
 }
 
-func (s RethinkPostStore) CreateTablesIfNotExists() {
-	err := rethink.TableCreate("Posts", rethink.TableCreateOpts{PrimaryKey: "Id"}).Exec(s.rethink, execOpts)
+func (self RethinkPostStore) CreateTablesIfNotExists() {
+	err := rethink.TableCreate("Posts", rethink.TableCreateOpts{PrimaryKey: "Id"}).Exec(self.session, execOpts)
 	handleCreateError("Posts.CreateTablesIfNotExists()", err)
 }
 
-func (s RethinkPostStore) CreateIndexesIfNotExists() {
+func (self RethinkPostStore) CreateIndexesIfNotExists() {
 	handleCreateError("Posts.UpdateAt.CreateIndexesIfNotExists().IndexCreate",
-		rethink.Table("Posts").IndexCreate("UpdateAt").Exec(s.rethink, execOpts))
+		rethink.Table("Posts").IndexCreate("UpdateAt").Exec(self.session, execOpts))
 	handleCreateError("Commands.UpdateAt.CreateIndexesIfNotExists().IndexWait",
-		rethink.Table("Posts").IndexWait("UpdateAt").Exec(s.rethink, execOpts))
+		rethink.Table("Posts").IndexWait("UpdateAt").Exec(self.session, execOpts))
 
 	handleCreateError("Posts.CreateAt.CreateIndexesIfNotExists().IndexCreate",
-		rethink.Table("Posts").IndexCreate("CreateAt").Exec(s.rethink, execOpts))
+		rethink.Table("Posts").IndexCreate("CreateAt").Exec(self.session, execOpts))
 	handleCreateError("Commands.CreateAt.CreateIndexesIfNotExists().IndexWait",
-		rethink.Table("Posts").IndexWait("CreateAt").Exec(s.rethink, execOpts))
+		rethink.Table("Posts").IndexWait("CreateAt").Exec(self.session, execOpts))
 
 	handleCreateError("Posts.ChannelId.CreateIndexesIfNotExists().IndexCreate",
-		rethink.Table("Posts").IndexCreate("ChannelId").Exec(s.rethink, execOpts))
+		rethink.Table("Posts").IndexCreate("ChannelId").Exec(self.session, execOpts))
 	handleCreateError("Commands.ChannelId.CreateIndexesIfNotExists().IndexWait",
-		rethink.Table("Posts").IndexWait("ChannelId").Exec(s.rethink, execOpts))
+		rethink.Table("Posts").IndexWait("ChannelId").Exec(self.session, execOpts))
 
 	handleCreateError("Posts.RootId.CreateIndexesIfNotExists().IndexCreate",
-		rethink.Table("Posts").IndexCreate("RootId").Exec(s.rethink, execOpts))
+		rethink.Table("Posts").IndexCreate("RootId").Exec(self.session, execOpts))
 	handleCreateError("Commands.RootId.CreateIndexesIfNotExists().IndexWait",
-		rethink.Table("Posts").IndexWait("RootId").Exec(s.rethink, execOpts))
+		rethink.Table("Posts").IndexWait("RootId").Exec(self.session, execOpts))
 }
 
-func (s RethinkPostStore) Save(post *model.Post) StoreChannel {
+func (self RethinkPostStore) Save(post *model.Post) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
@@ -71,7 +71,7 @@ func (s RethinkPostStore) Save(post *model.Post) StoreChannel {
 			return
 		}
 
-		changed, err := rethink.Table("Posts").Insert(post).RunWrite(s.rethink, runOpts)
+		changed, err := rethink.Table("Posts").Insert(post).RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkPostStore.Save",
 				"store.rethink_post.save.app_error", nil, "id="+post.Id+", "+err.Error())
@@ -82,15 +82,15 @@ func (s RethinkPostStore) Save(post *model.Post) StoreChannel {
 			time := model.GetMillis()
 
 			if post.Type != model.POST_JOIN_LEAVE {
-				s.updateTotalMsgCount(post, time)
+				self.updateTotalMsgCount(post, time)
 			} else {
 				// don't update TotalMsgCount for unimportant messages
 				// so that the channel isn't marked as unread
-				s.updateLastPostAt(post, time)
+				self.updateLastPostAt(post, time)
 			}
 
 			if len(post.RootId) > 0 {
-				s.updateRootPost(post, time)
+				self.updateRootPost(post, time)
 			}
 
 			result.Data = post
@@ -103,12 +103,12 @@ func (s RethinkPostStore) Save(post *model.Post) StoreChannel {
 	return storeChannel
 }
 
-func (s RethinkPostStore) updateTotalMsgCount(post *model.Post, time int64) {
+func (self RethinkPostStore) updateTotalMsgCount(post *model.Post, time int64) {
 	updated, err := rethink.Table("Channels").Get(post.ChannelId).
 		Update(map[string]interface{}{
 			"LastPostAt":    time,
 			"TotalMsgCount": rethink.Row.Field("MentionCount").Add(1).Default(0),
-		}).RunWrite(s.rethink, runOpts)
+		}).RunWrite(self.session, runOpts)
 	if err != nil {
 		l4g.Error(model.NewLocAppError("RethinkPostStore.updateTotalMsgCount",
 			"msg_count.app_error", nil, "id="+post.Id+", "+err.Error()).Error())
@@ -119,11 +119,11 @@ func (s RethinkPostStore) updateTotalMsgCount(post *model.Post, time int64) {
 	}
 }
 
-func (s RethinkPostStore) updateLastPostAt(post *model.Post, time int64) {
+func (self RethinkPostStore) updateLastPostAt(post *model.Post, time int64) {
 	updated, err := rethink.Table("Channels").Get(post.ChannelId).
 		Update(map[string]interface{}{
 			"LastPostAt": time,
-		}).RunWrite(s.rethink, runOpts)
+		}).RunWrite(self.session, runOpts)
 	if err != nil {
 		l4g.Error(model.NewLocAppError("RethinkPostStore.updateLastPostAt",
 			"last_post.app_error", nil, "id="+post.Id+", "+err.Error()).Error())
@@ -134,11 +134,11 @@ func (s RethinkPostStore) updateLastPostAt(post *model.Post, time int64) {
 	}
 }
 
-func (s RethinkPostStore) updateRootPost(post *model.Post, time int64) {
+func (self RethinkPostStore) updateRootPost(post *model.Post, time int64) {
 	updated, err := rethink.Table("Posts").Get(post.RootId).
 		Update(map[string]interface{}{
 			"UpdateAt": time,
-		}).RunWrite(s.rethink, runOpts)
+		}).RunWrite(self.session, runOpts)
 	if err != nil {
 		l4g.Error(model.NewLocAppError("RethinkPostStore.updateRootPost",
 			"update_at.app_error", nil,
@@ -150,7 +150,7 @@ func (s RethinkPostStore) updateRootPost(post *model.Post, time int64) {
 	}
 }
 
-func (s RethinkPostStore) Update(oldPost *model.Post, newMessage string, newHashtags string) StoreChannel {
+func (self RethinkPostStore) Update(oldPost *model.Post, newMessage string, newHashtags string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
@@ -172,7 +172,7 @@ func (s RethinkPostStore) Update(oldPost *model.Post, newMessage string, newHash
 			return
 		}
 
-		changed, err := rethink.Table("Posts").Get(editPost.Id).Update(&editPost).RunWrite(s.rethink, runOpts)
+		changed, err := rethink.Table("Posts").Get(editPost.Id).Update(&editPost).RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkPostStore.Update",
 				"store.rethink_post.update.app_error", nil, "id="+editPost.Id+", "+err.Error())
@@ -184,14 +184,14 @@ func (s RethinkPostStore) Update(oldPost *model.Post, newMessage string, newHash
 			time := model.GetMillis()
 
 			// TODO: This is not efficient when editing root posts
-			s.updateLastPostAt(&editPost, time)
+			self.updateLastPostAt(&editPost, time)
 
 			if len(editPost.RootId) > 0 {
-				s.updateRootPost(&editPost, time)
+				self.updateRootPost(&editPost, time)
 			}
 
 			// insert the old post as deleted
-			changed, err := rethink.Table("Posts").Insert(oldPost).RunWrite(s.rethink, runOpts)
+			changed, err := rethink.Table("Posts").Insert(oldPost).RunWrite(self.session, runOpts)
 			if err != nil {
 				result.Err = model.NewLocAppError("RethinkPostStore.Save",
 					"store.rethink_post.insert.oldpost.app_error", nil,
@@ -212,7 +212,7 @@ func (s RethinkPostStore) Update(oldPost *model.Post, newMessage string, newHash
 	return storeChannel
 }
 
-func (s RethinkPostStore) Get(id string) StoreChannel {
+func (self RethinkPostStore) Get(id string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
@@ -221,7 +221,7 @@ func (s RethinkPostStore) Get(id string) StoreChannel {
 
 		var post model.Post
 		// SELECT * FROM Posts WHERE Id = :Id AND DeleteAt = 0
-		cursor, err := rethink.Table("Posts").Get(id).Run(s.rethink, runOpts)
+		cursor, err := rethink.Table("Posts").Get(id).Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkPostStore.GetPost",
 				"store.rethink_post.get.app_error", nil, "id="+id+err.Error())
@@ -243,7 +243,7 @@ func (s RethinkPostStore) Get(id string) StoreChannel {
 		// SELECT * FROM Posts WHERE (Id = :Id OR RootId = :RootId) AND DeleteAt = 0
 		cursor, err = rethink.Table("Posts").Filter(rethink.Row.Field("Id").Eq(rootId).
 			Or(rethink.Row.Field("RootId").Eq(rootId)).
-			And(rethink.Row.Field("DeleteAt").Eq(0))).Run(s.rethink, runOpts)
+			And(rethink.Row.Field("DeleteAt").Eq(0))).Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkPostStore.GetPost",
 				"store.rethink_post.get.app_error", nil, "root_id="+rootId+err.Error())
@@ -273,7 +273,7 @@ type etagPosts struct {
 	UpdateAt int64
 }
 
-func (s RethinkPostStore) GetEtag(channelId string) StoreChannel {
+func (self RethinkPostStore) GetEtag(channelId string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
@@ -282,7 +282,7 @@ func (s RethinkPostStore) GetEtag(channelId string) StoreChannel {
 		var et etagPosts
 		// SELECT Id, UpdateAt FROM Posts WHERE ChannelId = :ChannelId ORDER BY UpdateAt DESC LIMIT 1
 		cursor, err := rethink.Table("Posts").Filter(rethink.Row.Field("ChannelId").Eq(channelId)).
-			OrderBy(rethink.Desc("UpdateAt")).Limit(1).Run(s.rethink, runOpts)
+			OrderBy(rethink.Desc("UpdateAt")).Limit(1).Run(self.session, runOpts)
 		if err != nil {
 			l4g.Error(model.NewLocAppError("RethinkPostStore.GetEtag",
 				"query.app_error", nil, "id="+channelId+", "+err.Error()).Error())
@@ -306,7 +306,7 @@ func (s RethinkPostStore) GetEtag(channelId string) StoreChannel {
 	return storeChannel
 }
 
-func (s RethinkPostStore) Delete(postId string, time int64) StoreChannel {
+func (self RethinkPostStore) Delete(postId string, time int64) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	//Update Posts SET DeleteAt = :DeleteAt, UpdateAt = :UpdateAt
@@ -319,7 +319,7 @@ func (s RethinkPostStore) Delete(postId string, time int64) StoreChannel {
 				And(rethink.Row.Field("ParentId").Eq(postId).
 					And(rethink.Row.Field("RootId").Eq(postId)))).
 			Update(map[string]interface{}{"DeleteAt": time, "UpdateAt": time}).
-			RunWrite(s.rethink, runOpts)
+			RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkPostStore.Delete",
 				"store.rethink_post.delete.app_error", nil, "id="+postId+", err="+err.Error())
@@ -332,14 +332,14 @@ func (s RethinkPostStore) Delete(postId string, time int64) StoreChannel {
 	return storeChannel
 }
 
-func (s RethinkPostStore) permanentDelete(postId string) StoreChannel {
+func (self RethinkPostStore) permanentDelete(postId string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	// DELETE FROM Posts WHERE Id = :Id OR ParentId = :ParentId OR RootId = :RootId
 	go func() {
 		result := StoreResult{}
 
-		err := rethink.Table("Posts").Get(postId).Delete().Exec(s.rethink, execOpts)
+		err := rethink.Table("Posts").Get(postId).Delete().Exec(self.session, execOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkPostStore.Delete",
 				"store.rethink_post.permanent_delete.app_error", nil,
@@ -353,7 +353,7 @@ func (s RethinkPostStore) permanentDelete(postId string) StoreChannel {
 	return storeChannel
 }
 
-func (s RethinkPostStore) permanentDeleteAllCommentByUser(userId string) StoreChannel {
+func (self RethinkPostStore) permanentDeleteAllCommentByUser(userId string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	// DELETE FROM Posts WHERE UserId = :UserId AND RootId != ''"
@@ -361,7 +361,7 @@ func (s RethinkPostStore) permanentDeleteAllCommentByUser(userId string) StoreCh
 		result := StoreResult{}
 
 		err := rethink.Table("Posts").Filter(rethink.Row.Field("UserId").Eq(userId).
-			And(rethink.Row.Field("RootId").Ne(""))).Delete().Exec(s.rethink, execOpts)
+			And(rethink.Row.Field("RootId").Ne(""))).Delete().Exec(self.session, execOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkPostStore.permanentDeleteAllCommentByUser",
 				"store.rethink_post.permanent_delete_all_comments_by_user.app_error", nil,
@@ -375,14 +375,14 @@ func (s RethinkPostStore) permanentDeleteAllCommentByUser(userId string) StoreCh
 	return storeChannel
 }
 
-func (s RethinkPostStore) PermanentDeleteByUser(userId string) StoreChannel {
+func (self RethinkPostStore) PermanentDeleteByUser(userId string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
 		result := StoreResult{}
 
 		// First attempt to delete all the comments for a user
-		if r := <-s.permanentDeleteAllCommentByUser(userId); r.Err != nil {
+		if r := <-self.permanentDeleteAllCommentByUser(userId); r.Err != nil {
 			result.Err = r.Err
 			storeChannel <- result
 			close(storeChannel)
@@ -398,7 +398,7 @@ func (s RethinkPostStore) PermanentDeleteByUser(userId string) StoreChannel {
 		for found {
 			var posts []model.Post
 			cursor, err := rethink.Table("Posts").Filter(rethink.Row.Field("UserId").Eq(userId)).
-				Limit(1000).Run(s.rethink, runOpts)
+				Limit(1000).Run(self.session, runOpts)
 			if err != nil {
 				result.Err = model.NewLocAppError("RethinkPostStore.PermanentDeleteByUser.select",
 					"store.rethink_post.permanent_delete_by_user.app_error", nil,
@@ -421,7 +421,7 @@ func (s RethinkPostStore) PermanentDeleteByUser(userId string) StoreChannel {
 				found = false
 				for _, post := range posts {
 					found = true
-					if r := <-s.permanentDelete(post.Id); r.Err != nil {
+					if r := <-self.permanentDelete(post.Id); r.Err != nil {
 						result.Err = r.Err
 						storeChannel <- result
 						close(storeChannel)
@@ -449,7 +449,7 @@ func (s RethinkPostStore) PermanentDeleteByUser(userId string) StoreChannel {
 	return storeChannel
 }
 
-func (s RethinkPostStore) GetPosts(channelId string, offset int, limit int) StoreChannel {
+func (self RethinkPostStore) GetPosts(channelId string, offset int, limit int) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
@@ -463,8 +463,8 @@ func (s RethinkPostStore) GetPosts(channelId string, offset int, limit int) Stor
 			return
 		}
 
-		rpc := s.getRootPosts(channelId, offset, limit)
-		cpc := s.getParentsPosts(channelId, offset, limit)
+		rpc := self.getRootPosts(channelId, offset, limit)
+		cpc := self.getParentsPosts(channelId, offset, limit)
 
 		var rpr, cpr StoreResult
 		if rpr = <-rpc; rpr.Err != nil {
@@ -511,7 +511,7 @@ r.db('mattermost').table('Posts').filter({"id": id}).union(
 	})
 ); */
 
-func (s RethinkPostStore) GetPostsSince(channelId string, time int64) StoreChannel {
+func (self RethinkPostStore) GetPostsSince(channelId string, time int64) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	// (SELECT * FROM Posts WHERE (UpdateAt > :Time AND ChannelId = :ChannelId) LIMIT 1000)
@@ -538,7 +538,7 @@ func (s RethinkPostStore) GetPostsSince(channelId string, time int64) StoreChann
 					})
 			}).OrderBy(rethink.Desc("CreateAt"))).Distinct()
 
-		cursor, err := term.Run(s.rethink, runOpts)
+		cursor, err := term.Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkPostStore.GetPostsSince",
 				"store.rethink_post.get_posts_since.app_error", nil,
@@ -570,15 +570,15 @@ func (s RethinkPostStore) GetPostsSince(channelId string, time int64) StoreChann
 	return storeChannel
 }
 
-func (s RethinkPostStore) GetPostsBefore(channelId string, postId string, numPosts int, offset int) StoreChannel {
-	return s.getPostsAround(channelId, postId, numPosts, offset, true)
+func (self RethinkPostStore) GetPostsBefore(channelId string, postId string, numPosts int, offset int) StoreChannel {
+	return self.getPostsAround(channelId, postId, numPosts, offset, true)
 }
 
-func (s RethinkPostStore) GetPostsAfter(channelId string, postId string, numPosts int, offset int) StoreChannel {
-	return s.getPostsAround(channelId, postId, numPosts, offset, false)
+func (self RethinkPostStore) GetPostsAfter(channelId string, postId string, numPosts int, offset int) StoreChannel {
+	return self.getPostsAround(channelId, postId, numPosts, offset, false)
 }
 
-func (s RethinkPostStore) getPostsAround(channelId string, postId string, numPosts int, offset int, before bool) StoreChannel {
+func (self RethinkPostStore) getPostsAround(channelId string, postId string, numPosts int, offset int, before bool) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	// (SELECT * FROM Posts WHERE (CreateAt `+direction+` (
@@ -596,7 +596,7 @@ func (s RethinkPostStore) getPostsAround(channelId string, postId string, numPos
 		result := StoreResult{}
 
 		var post model.Post
-		cursor, err := rethink.Table("Posts").Get(postId).Run(s.rethink, runOpts)
+		cursor, err := rethink.Table("Posts").Get(postId).Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkPostStore.getPostsAround",
 				"store.rethink_post.get.app_error", nil, "id="+postId+err.Error())
@@ -639,7 +639,7 @@ func (s RethinkPostStore) getPostsAround(channelId string, postId string, numPos
 					return row.Field("RootId").Eq(doc.Field("Id")).
 						Or(row.Field("RootId").Eq(doc.Field("RootId")))
 				})
-		}).Distinct().OrderBy(rethink.Desc("CreateAt"))).Run(s.rethink, runOpts)
+		}).Distinct().OrderBy(rethink.Desc("CreateAt"))).Run(self.session, runOpts)
 
 		query = query.Limit(numPosts).OffsetsOf(offset)
 
@@ -682,7 +682,7 @@ func (s RethinkPostStore) getPostsAround(channelId string, postId string, numPos
 	return storeChannel
 }
 
-func (s RethinkPostStore) getRootPosts(channelId string, offset int, limit int) StoreChannel {
+func (self RethinkPostStore) getRootPosts(channelId string, offset int, limit int) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
@@ -695,7 +695,7 @@ func (s RethinkPostStore) getRootPosts(channelId string, offset int, limit int) 
 			rethink.Row.Field("ChannelId").Eq(channelId).
 				And(rethink.Row.Field("DeleteAt").Eq(0))).
 			OrderBy(rethink.Desc("CreateAt")).
-			Limit(limit).OffsetsOf(offset).Run(s.rethink, runOpts)
+			Limit(limit).OffsetsOf(offset).Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkPostStore.GetLinearPosts",
 				"store.rethink_post.get_root_posts.app_error", nil,
@@ -715,7 +715,7 @@ func (s RethinkPostStore) getRootPosts(channelId string, offset int, limit int) 
 	return storeChannel
 }
 
-func (s RethinkPostStore) getParentsPosts(channelId string, offset int, limit int) StoreChannel {
+func (self RethinkPostStore) getParentsPosts(channelId string, offset int, limit int) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	// SELECT q2.* FROM Posts q2 INNER JOIN
@@ -741,7 +741,7 @@ func (s RethinkPostStore) getParentsPosts(channelId string, offset int, limit in
 						Or(row.Field("RootId").Eq(doc.Field("RootId")))
 				})
 		}).OrderBy(rethink.Desc("CreateAt")).Distinct()
-		cursor, err := term.Run(s.rethink, runOpts)
+		cursor, err := term.Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkPostStore.GetLinearPosts",
 				"store.rethink_post.get_parents_posts.app_error", nil,
@@ -765,23 +765,11 @@ func (s RethinkPostStore) getParentsPosts(channelId string, offset int, limit in
 	return storeChannel
 }
 
-var specialSearchChar = []string{
-	"<",
-	">",
-	"+",
-	"-",
-	"(",
-	")",
-	"~",
-	"@",
-	":",
-}
-
-func (s RethinkPostStore) fetchChannelIds(channelFilter rethink.Term) ([]string, error) {
+func (self RethinkPostStore) fetchChannelIds(channelFilter rethink.Term) ([]string, *model.AppError) {
 	results := make([]string, 0)
 	cursor, err := rethink.Table("ChannelMembers").EqJoin("ChannelId", rethink.Table("Channels")).
 		Without(map[string]string{"left": "Id"}).
-		Zip().Filter(channelFilter).Run(s.rethink, runOpts)
+		Zip().Filter(channelFilter).Run(self.session, runOpts)
 	if err != nil {
 		return nil, model.NewLocAppError("RethinkPostStore.Search",
 			"fetchChannelIds.app_error", nil, err.Error())
@@ -790,7 +778,7 @@ func (s RethinkPostStore) fetchChannelIds(channelFilter rethink.Term) ([]string,
 			"fetchChannelIds.cursor.app_error", nil, err.Error())
 	}
 	if cursor != nil {
-		var row map[string]interface{}
+		var row map[string]string
 		for cursor.Next(&row) {
 			results = append(results, row["Id"])
 		}
@@ -799,9 +787,9 @@ func (s RethinkPostStore) fetchChannelIds(channelFilter rethink.Term) ([]string,
 	return results, nil
 }
 
-func (s RethinkPostStore) fetchUserIds(filter rethink.Term) ([]string, error) {
+func (self RethinkPostStore) fetchUserIds(filter rethink.Term) ([]string, *model.AppError) {
 	results := make([]string, 0)
-	cursor, err := rethink.Table("Users").Filter(filter).Run(s.rethink, runOpts)
+	cursor, err := rethink.Table("Users").Filter(filter).Run(self.session, runOpts)
 	if err != nil {
 		return nil, model.NewLocAppError("RethinkPostStore.Search",
 			"fetchUserIds.app_error", nil, err.Error())
@@ -810,7 +798,7 @@ func (s RethinkPostStore) fetchUserIds(filter rethink.Term) ([]string, error) {
 			"fetchUserIds.cursor.app_error", nil, err.Error())
 	}
 	if cursor != nil {
-		var row map[string]interface{}
+		var row map[string]string
 		for cursor.Next(&row) {
 			results = append(results, row["Id"])
 		}
@@ -819,7 +807,7 @@ func (s RethinkPostStore) fetchUserIds(filter rethink.Term) ([]string, error) {
 	return results, nil
 }
 
-func (s RethinkPostStore) Search(teamId string, userId string, params *model.SearchParams) StoreChannel {
+func (self RethinkPostStore) Search(teamId string, userId string, params *model.SearchParams) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
@@ -850,7 +838,7 @@ func (s RethinkPostStore) Search(teamId string, userId string, params *model.Sea
 		var posts []*model.Post
 
 		var channelIds, userIds []string
-		var err error
+		var appErr *model.AppError
 		channelFilter := rethink.Row.Field("UserId").Eq(userId).
 			And(rethink.Row.Field("DeleteAt").Eq(0)).
 			And(rethink.Row.Field("TeamId").Eq(teamId)).
@@ -863,9 +851,9 @@ func (s RethinkPostStore) Search(teamId string, userId string, params *model.Sea
 						Eq(params.InChannels[i]))
 				}
 			}
-			channelIds, err = s.fetchChannelIds(channelFilter)
-			if err != nil {
-				result.Err = err
+			channelIds, appErr = self.fetchChannelIds(channelFilter)
+			if appErr != nil {
+				result.Err = appErr
 				storeChannel <- result
 				close(storeChannel)
 			}
@@ -879,9 +867,9 @@ func (s RethinkPostStore) Search(teamId string, userId string, params *model.Sea
 						Eq(params.FromUsers[i]))
 				}
 			}
-			userIds, err = s.fetchUserIds(userFilter)
-			if err != nil {
-				result.Err = err
+			userIds, appErr = self.fetchUserIds(userFilter)
+			if appErr != nil {
+				result.Err = appErr
 				storeChannel <- result
 				close(storeChannel)
 			}
@@ -932,7 +920,7 @@ func (s RethinkPostStore) Search(teamId string, userId string, params *model.Sea
 			Filter(func(row rethink.Term) rethink.Term {
 				return rethink.Expr(userIds).Contains(row.Field("UserId"))
 			}).
-			OrderBy(rethink.Desc("CreateAt")).Limit(100).Run(s.rethink, runOpts)
+			OrderBy(rethink.Desc("CreateAt")).Limit(100).Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkPostStore.Search",
 				"store.rethink_post.search.app_error", nil, "teamId="+teamId+", err="+err.Error())
@@ -970,7 +958,7 @@ func (s RethinkPostStore) Search(teamId string, userId string, params *model.Sea
 	return storeChannel
 }
 
-func (s RethinkPostStore) GetForExport(channelId string) StoreChannel {
+func (self RethinkPostStore) GetForExport(channelId string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
@@ -994,7 +982,7 @@ func (s RethinkPostStore) GetForExport(channelId string) StoreChannel {
 	return storeChannel
 }
 
-func (s RethinkPostStore) AnalyticsUserCountsWithPostsByDay(teamId string) StoreChannel {
+func (self RethinkPostStore) AnalyticsUserCountsWithPostsByDay(teamId string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	// SELECT t1.Name, COUNT(t1.UserId) AS Value
@@ -1033,7 +1021,7 @@ func (s RethinkPostStore) AnalyticsUserCountsWithPostsByDay(teamId string) Store
 		}).OrderBy(rethink.Desc("Name")).Limit(30)
 
 		var rows model.AnalyticsRows
-		cursor, err := term.Run(s.rethink, runOpts)
+		cursor, err := term.Run(self.rethink, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkPostStore.AnalyticsUserCountsWithPostsByDay",
 				"store.rethink_post.analytics_user_counts_posts_by_day.app_error", nil, err.Error())
@@ -1052,7 +1040,7 @@ func (s RethinkPostStore) AnalyticsUserCountsWithPostsByDay(teamId string) Store
 	return storeChannel
 }
 
-func (s RethinkPostStore) AnalyticsPostCountsByDay(teamId string) StoreChannel {
+func (self RethinkPostStore) AnalyticsPostCountsByDay(teamId string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
@@ -1101,7 +1089,7 @@ func (s RethinkPostStore) AnalyticsPostCountsByDay(teamId string) StoreChannel {
 	return storeChannel
 }
 
-func (s RethinkPostStore) AnalyticsPostCount(teamId string, mustHaveFile bool, mustHaveHashtag bool) StoreChannel {
+func (self RethinkPostStore) AnalyticsPostCount(teamId string, mustHaveFile bool, mustHaveHashtag bool) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {

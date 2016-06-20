@@ -24,21 +24,22 @@ var execOpts = rethink.ExecOpts{
 }
 
 type RethinkStore struct {
-	rethink       *rethink.Session
+	reSession     *rethink.Session
 	team          *RethinkTeamStore
 	channel       *RethinkChannelStore
 	user          *RethinkUserStore
 	audit         *RethinkAuditStore
-	post          PostStore
-	compliance    ComplianceStore
-	session       SessionStore
-	oauth         OAuthStore
-	system        SystemStore
-	webhook       WebhookStore
-	command       CommandStore
-	preference    PreferenceStore
-	license       LicenseStore
-	recovery      PasswordRecoveryStore
+	post          *RethinkPostStore
+	compliance    *RethinkComplianceStore
+	session       *RethinkSessionStore
+	oauth         *RethinkOAuthStore
+	system        *RethinkSystemStore
+	webhook       *RethinkWebhookStore
+	command       *RethinkCommandStore
+	preference    *RethinkPreferenceStore
+	license       *RethinkLicenseStore
+	recovery      *RethinkRecoveryStore
+	emoji         *RethinkEmojiStore
 	SchemaVersion string
 }
 
@@ -58,7 +59,7 @@ func NewRethinkStore() Store {
 			time.Sleep(time.Second)
 			continue
 		}
-		store.rethink = session
+		store.reSession = session
 		break
 	}
 
@@ -68,10 +69,10 @@ func NewRethinkStore() Store {
 	// TODO: Need to init the hub somehow (Perhaps move the hub code into the store package?
 	// hub.rethink = session
 
-	store.team = NewRethinkTeamStore(store.rethink)
-	store.channel = NewRethinkChannelStore(store.rethink)
-	store.user = NewRethinkUserStore(store.rethink)
-	store.audit = NewRethinkAuditStore(store.rethink)
+	store.team = NewRethinkTeamStore(store.reSession)
+	store.channel = NewRethinkChannelStore(store.reSession)
+	store.user = NewRethinkUserStore(store.reSession)
+	store.audit = NewRethinkAuditStore(store.reSession)
 
 	store.WatchTransactions()
 
@@ -139,14 +140,14 @@ func (self RethinkStore) WatchTransactions() {
 }
 
 func (self RethinkStore) CreateTablesIfNotExist() {
-	err := rethink.TableCreate("Transactions", rethink.TableCreateOpts{PrimaryKey: "Id"}).Exec(self.rethink, execOpts)
+	err := rethink.TableCreate("Transactions", rethink.TableCreateOpts{PrimaryKey: "Id"}).Exec(self.reSession, execOpts)
 	handleCreateError("Transactions.CreateTablesIfNotExists().", err)
 }
 
 func (self RethinkStore) runTransaction(change *model.Transaction, transFunc func(change *model.Transaction, updateState func(*model.Transaction) error) error) {
 	update := func(trans *model.Transaction) error {
 		update, err := rethink.Table("Transactions").Get(trans.Id).
-			Update(change).RunWrite(self.rethink, runOpts)
+			Update(change).RunWrite(self.reSession, runOpts)
 		if err != nil {
 			return err
 		}
@@ -158,7 +159,7 @@ func (self RethinkStore) runTransaction(change *model.Transaction, transFunc fun
 	}
 
 	delTransaction := func(id string) error {
-		update, err := rethink.Table("Transactions").Get(id).Delete().RunWrite(self.rethink, runOpts)
+		update, err := rethink.Table("Transactions").Get(id).Delete().RunWrite(self.reSession, runOpts)
 		if err != nil {
 			return err
 		}
@@ -189,8 +190,8 @@ func (self RethinkStore) runTransaction(change *model.Transaction, transFunc fun
 
 func (self RethinkStore) Close() {
 	l4g.Info(utils.T("store.sql.closing.info"))
-	if self.rethink != nil {
-		self.rethink.Close()
+	if self.reSession != nil {
+		self.reSession.Close()
 	}
 }
 
@@ -250,8 +251,12 @@ func (self RethinkStore) PasswordRecovery() PasswordRecoveryStore {
 	return self.recovery
 }
 
+func (self RethinkStore) Emoji() EmojiStore {
+	return self.emoji
+}
+
 func (self RethinkStore) DropAllTables() {
-	cursor, err := rethink.TableList().Run(self.rethink)
+	cursor, err := rethink.TableList().Run(self.reSession)
 	if err != nil {
 		l4g.Info("store.sql.DropAllTables.TableList.error", err)
 		return
@@ -264,7 +269,7 @@ func (self RethinkStore) DropAllTables() {
 	}
 
 	for _, table := range tables {
-		if err := rethink.Table(table).Delete().Exec(self.rethink); err != nil {
+		if err := rethink.Table(table).Delete().Exec(self.reSession); err != nil {
 			l4g.Info("store.sql.DropAllTables.droptable.error", err)
 		}
 	}

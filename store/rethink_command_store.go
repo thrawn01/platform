@@ -6,32 +6,32 @@ import (
 )
 
 type RethinkCommandStore struct {
-	rethink *rethink.Session
+	session *rethink.Session
 }
 
 func NewRethinkCommandStore(session *rethink.Session) CommandStore {
-	s := &RethinkCommandStore{session}
-	s.CreateIndexesIfNotExists()
-	s.CreateTablesIfNotExists()
-	return s
+	store := &RethinkCommandStore{session}
+	store.CreateIndexesIfNotExists()
+	store.CreateTablesIfNotExists()
+	return store
 }
 
-func (s RethinkCommandStore) UpgradeSchemaIfNeeded() {
+func (self RethinkCommandStore) UpgradeSchemaIfNeeded() {
 }
 
-func (s RethinkCommandStore) CreateTablesIfNotExists() {
-	err := rethink.TableCreate("Commands", rethink.TableCreateOpts{PrimaryKey: "Id"}).Exec(s.rethink, execOpts)
+func (self RethinkCommandStore) CreateTablesIfNotExists() {
+	err := rethink.TableCreate("Commands", rethink.TableCreateOpts{PrimaryKey: "Id"}).Exec(self.session, execOpts)
 	handleCreateError("Commands.CreateTablesIfNotExists()", err)
 }
 
-func (s RethinkCommandStore) CreateIndexesIfNotExists() {
-	err := rethink.Table("Commands").IndexCreate("TeamId").Exec(s.rethink, execOpts)
+func (self RethinkCommandStore) CreateIndexesIfNotExists() {
+	err := rethink.Table("Commands").IndexCreate("TeamId").Exec(self.session, execOpts)
 	handleCreateError("Commands.CreateIndexesIfNotExists().IndexCreate", err)
-	err = rethink.Table("Commands").IndexWait("TeamId").Exec(s.rethink, execOpts)
+	err = rethink.Table("Commands").IndexWait("TeamId").Exec(self.session, execOpts)
 	handleCreateError("Commands.CreateIndexesIfNotExists().IndexWait", err)
 }
 
-func (s RethinkCommandStore) Save(command *model.Command) StoreChannel {
+func (self RethinkCommandStore) Save(command *model.Command) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
@@ -52,7 +52,7 @@ func (s RethinkCommandStore) Save(command *model.Command) StoreChannel {
 			return
 		}
 
-		_, err := rethink.Table("Commands").Insert(command).RunWrite(s.rethink, runOpts)
+		_, err := rethink.Table("Commands").Insert(command).RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkCommandStore.Save",
 				"store.rethink_command.save.saving.app_error", nil, "id="+command.Id+", "+err.Error())
@@ -67,7 +67,7 @@ func (s RethinkCommandStore) Save(command *model.Command) StoreChannel {
 	return storeChannel
 }
 
-func (s RethinkCommandStore) Get(id string) StoreChannel {
+func (self RethinkCommandStore) Get(id string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
@@ -75,7 +75,7 @@ func (s RethinkCommandStore) Get(id string) StoreChannel {
 
 		var command model.Command
 
-		cursor, err := rethink.Table("Commands").Get(id).Run(s.rethink, runOpts)
+		cursor, err := rethink.Table("Commands").Get(id).Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkCommandStore.Get",
 				"store.rethink_command.get.app_error", nil, "id="+id+", err="+err.Error())
@@ -85,14 +85,13 @@ func (s RethinkCommandStore) Get(id string) StoreChannel {
 		} else if command.DeleteAt != 0 {
 			result.Err = model.NewLocAppError("RethinkCommandStore.Get",
 				"store.rethink_command.deleted.get.app_error", nil, "id="+id)
+		} else {
+			result.Data = &command
 		}
 
 		if cursor != nil {
 			cursor.Close()
 		}
-
-		result.Data = &command
-
 		storeChannel <- result
 		close(storeChannel)
 	}()
@@ -100,7 +99,7 @@ func (s RethinkCommandStore) Get(id string) StoreChannel {
 	return storeChannel
 }
 
-func (s RethinkCommandStore) GetByTeam(teamId string) StoreChannel {
+func (self RethinkCommandStore) GetByTeam(teamId string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
@@ -109,7 +108,7 @@ func (s RethinkCommandStore) GetByTeam(teamId string) StoreChannel {
 		var commands []*model.Command
 
 		cursor, err := rethink.Table("Commands").Filter(rethink.Row.Field("TeamId").Eq(teamId).
-			And(rethink.Row.Field("DeleteAt").Eq(0))).Run(s.rethink, runOpts)
+			And(rethink.Row.Field("DeleteAt").Eq(0))).Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkCommandStore.GetByTeam",
 				"store.rethink_command.get_team.app_error", nil,
@@ -117,14 +116,13 @@ func (s RethinkCommandStore) GetByTeam(teamId string) StoreChannel {
 		} else if cursor.All(&commands); err != nil {
 			result.Err = model.NewLocAppError("RethinkCommandStore.GetByTeam",
 				"store.rethink_command.get_team.cursor.app_error", nil, "teamId="+teamId)
+		} else {
+			result.Data = commands
 		}
 
 		if cursor != nil {
 			cursor.Close()
 		}
-
-		result.Data = commands
-
 		storeChannel <- result
 		close(storeChannel)
 	}()
@@ -132,7 +130,7 @@ func (s RethinkCommandStore) GetByTeam(teamId string) StoreChannel {
 	return storeChannel
 }
 
-func (s RethinkCommandStore) Delete(commandId string, time int64) StoreChannel {
+func (self RethinkCommandStore) Delete(commandId string, time int64) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
@@ -140,7 +138,7 @@ func (s RethinkCommandStore) Delete(commandId string, time int64) StoreChannel {
 
 		_, err := rethink.Table("Commands").Get(commandId).
 			Update(map[string]interface{}{"DeleteAt": time, "UpdateAt": time}).
-			RunWrite(s.rethink, runOpts)
+			RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkCommandStore.Delete",
 				"store.rethink_command.update.delete.app_error", nil,
@@ -154,14 +152,14 @@ func (s RethinkCommandStore) Delete(commandId string, time int64) StoreChannel {
 	return storeChannel
 }
 
-func (s RethinkCommandStore) PermanentDeleteByUser(userId string) StoreChannel {
+func (self RethinkCommandStore) PermanentDeleteByUser(userId string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
 		result := StoreResult{}
 
 		_, err := rethink.Table("Commands").Filter(rethink.Row.Field("CreatorId").Eq(userId)).
-			Delete().RunWrite(s.rethink, runOpts)
+			Delete().RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkCommandStore.DeleteByUser",
 				"store.rethink_command.save.delete_perm.app_error", nil,
@@ -176,7 +174,7 @@ func (s RethinkCommandStore) PermanentDeleteByUser(userId string) StoreChannel {
 	return storeChannel
 }
 
-func (s RethinkCommandStore) Update(cmd *model.Command) StoreChannel {
+func (self RethinkCommandStore) Update(cmd *model.Command) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
@@ -185,7 +183,7 @@ func (s RethinkCommandStore) Update(cmd *model.Command) StoreChannel {
 		cmd.UpdateAt = model.GetMillis()
 
 		changed, err := rethink.Table("Commands").Get(cmd.Id).Update(cmd).
-			RunWrite(s.rethink, runOpts)
+			RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkCommandStore.Update",
 				"store.rethink_command.save.update.app_error", nil, "id="+cmd.Id+", "+err.Error())
@@ -203,7 +201,7 @@ func (s RethinkCommandStore) Update(cmd *model.Command) StoreChannel {
 	return storeChannel
 }
 
-func (s RethinkCommandStore) AnalyticsCommandCount(teamId string) StoreChannel {
+func (self RethinkCommandStore) AnalyticsCommandCount(teamId string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	//SELECT COUNT(*) FROM Commands WHERE DeleteAt = 0 AND TeamId = :TeamId"
@@ -216,7 +214,7 @@ func (s RethinkCommandStore) AnalyticsCommandCount(teamId string) StoreChannel {
 		}
 
 		var count int64
-		cursor, err := rethink.Table("Commands").Filter(filter).Count().Run(s.rethink, runOpts)
+		cursor, err := rethink.Table("Commands").Filter(filter).Count().Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkCommandStore.AnalyticsCommandCount",
 				"store.rethink_command.analytics_command_count.app_error", nil, err.Error())
@@ -230,7 +228,6 @@ func (s RethinkCommandStore) AnalyticsCommandCount(teamId string) StoreChannel {
 		if cursor != nil {
 			cursor.Close()
 		}
-
 		storeChannel <- result
 		close(storeChannel)
 	}()

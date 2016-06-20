@@ -6,32 +6,32 @@ import (
 )
 
 type RethinkAuditStore struct {
-	rethink *rethink.Session
+	session *rethink.Session
 }
 
 func NewRethinkAuditStore(session *rethink.Session) *RethinkAuditStore {
-	s := &RethinkAuditStore{session}
-	s.CreateTablesIfNotExists()
-	s.CreateIndexesIfNotExists()
-	return s
+	store := &RethinkAuditStore{session}
+	store.CreateTablesIfNotExists()
+	store.CreateIndexesIfNotExists()
+	return store
 }
 
-func (s RethinkAuditStore) UpgradeSchemaIfNeeded() {
+func (self RethinkAuditStore) UpgradeSchemaIfNeeded() {
 }
 
-func (s RethinkAuditStore) CreateTablesIfNotExists() {
-	err := rethink.TableCreate("Audits", rethink.TableCreateOpts{PrimaryKey: "Id"}).Exec(s.rethink, execOpts)
+func (self RethinkAuditStore) CreateTablesIfNotExists() {
+	err := rethink.TableCreate("Audits", rethink.TableCreateOpts{PrimaryKey: "Id"}).Exec(self.session, execOpts)
 	handleCreateError("Audits.CreateTablesIfNotExists().", err)
 }
 
-func (s RethinkAuditStore) CreateIndexesIfNotExists() {
-	err := rethink.Table("Audits").IndexCreate("UserId").Exec(s.rethink, execOpts)
+func (self RethinkAuditStore) CreateIndexesIfNotExists() {
+	err := rethink.Table("Audits").IndexCreate("UserId").Exec(self.session, execOpts)
 	handleCreateError("Audits.CreateIndexesIfNotExists().UserId.IndexCreate", err)
-	err = rethink.Table("Audits").IndexWait("UserId").Exec(s.rethink, execOpts)
+	err = rethink.Table("Audits").IndexWait("UserId").Exec(self.session, execOpts)
 	handleCreateError("Audits.CreateIndexesIfNotExists().UserId.IndexWait", err)
 }
 
-func (s RethinkAuditStore) Save(audit *model.Audit) StoreChannel {
+func (self RethinkAuditStore) Save(audit *model.Audit) StoreChannel {
 
 	storeChannel := make(StoreChannel)
 
@@ -41,7 +41,7 @@ func (s RethinkAuditStore) Save(audit *model.Audit) StoreChannel {
 		audit.Id = model.NewId()
 		audit.CreateAt = model.GetMillis()
 
-		changed, err := rethink.Table("Audits").Insert(audit).RunWrite(s.rethink, runOpts)
+		changed, err := rethink.Table("Audits").Insert(audit).RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkAuditStore.Save",
 				"store.sql_audit.save.saving.app_error", nil, "user_id="+
@@ -59,7 +59,7 @@ func (s RethinkAuditStore) Save(audit *model.Audit) StoreChannel {
 	return storeChannel
 }
 
-func (s RethinkAuditStore) Get(user_id string, limit int) StoreChannel {
+func (self RethinkAuditStore) Get(user_id string, limit int) StoreChannel {
 
 	storeChannel := make(StoreChannel)
 
@@ -85,7 +85,7 @@ func (s RethinkAuditStore) Get(user_id string, limit int) StoreChannel {
 		term = term.OrderBy(rethink.Desc("CreateAt")).Limit(limit)
 
 		var audits model.Audits
-		cursor, err := term.Run(s.rethink, runOpts)
+		cursor, err := term.Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkAuditStore.Get",
 				"store.sql_audit.get.finding.app_error", nil, "user_id="+user_id)
@@ -96,6 +96,10 @@ func (s RethinkAuditStore) Get(user_id string, limit int) StoreChannel {
 			result.Data = audits
 		}
 
+		if cursor != nil {
+			cursor.Close()
+		}
+
 		storeChannel <- result
 		close(storeChannel)
 	}()
@@ -103,7 +107,7 @@ func (s RethinkAuditStore) Get(user_id string, limit int) StoreChannel {
 	return storeChannel
 }
 
-func (s RethinkAuditStore) PermanentDeleteByUser(userId string) StoreChannel {
+func (self RethinkAuditStore) PermanentDeleteByUser(userId string) StoreChannel {
 
 	storeChannel := make(StoreChannel)
 
@@ -112,9 +116,10 @@ func (s RethinkAuditStore) PermanentDeleteByUser(userId string) StoreChannel {
 		result := StoreResult{}
 
 		err := rethink.Table("Audits").Filter(rethink.Row.Field("UserId").Eq(userId)).
-			Delete().Exec(s.rethink, execOpts)
+			Delete().Exec(self.session, execOpts)
 		if err != nil {
-			result.Err = model.NewLocAppError("RethinkAuditStore.Delete", "store.sql_audit.permanent_delete_by_user.app_error", nil, "user_id="+userId)
+			result.Err = model.NewLocAppError("RethinkAuditStore.Delete",
+				"store.sql_audit.permanent_delete_by_user.app_error", nil, "user_id="+userId)
 		}
 
 		storeChannel <- result

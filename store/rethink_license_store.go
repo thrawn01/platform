@@ -6,21 +6,21 @@ import (
 )
 
 type RethinkLicenseStore struct {
-	rethink *rethink.Session
+	session *rethink.Session
 }
 
-func NewRethinkLicenseStore(sqlStore *RethinkStore) LicenseStore {
-	s := &RethinkLicenseStore{sqlStore}
-	s.CreateTablesIfNotExists()
-	s.CreateIndexesIfNotExists()
-	return s
+func NewRethinkLicenseStore(session *rethink.Session) LicenseStore {
+	store := &RethinkLicenseStore{session}
+	store.CreateTablesIfNotExists()
+	store.CreateIndexesIfNotExists()
+	return store
 }
 
 func (self RethinkLicenseStore) UpgradeSchemaIfNeeded() {
 }
 
 func (self RethinkLicenseStore) CreateTablesIfNotExists() {
-	err := rethink.TableCreate("Licenses", rethink.TableCreateOpts{PrimaryKey: "Id"}).Exec(self.rethink, execOpts)
+	err := rethink.TableCreate("Licenses", rethink.TableCreateOpts{PrimaryKey: "Id"}).Exec(self.session, execOpts)
 	handleCreateError("Licenses.CreateTablesIfNotExists()", err)
 }
 
@@ -42,12 +42,12 @@ func (self RethinkLicenseStore) Save(license *model.LicenseRecord) StoreChannel 
 		}
 
 		// Only insert if not exists
-		cursor, err := rethink.Table("Licenses").Get(license.Id).Run(self.rethink, runOpts)
+		cursor, err := rethink.Table("Licenses").Get(license.Id).Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkLicenseStore.Save",
 				"store.sql_license.save.app_error", nil, "license_id="+license.Id+", "+err.Error())
 		} else if cursor.IsNil() {
-			changed, err := rethink.Table("Licenses").Insert(license).RunWrite(self.rethink, runOpts)
+			changed, err := rethink.Table("Licenses").Insert(license).RunWrite(self.session, runOpts)
 			if err != nil {
 				result.Err = model.NewLocAppError("RethinkLicenseStore.Save",
 					"store.sql_license.save.insert.app_error", nil,
@@ -61,6 +61,9 @@ func (self RethinkLicenseStore) Save(license *model.LicenseRecord) StoreChannel 
 			}
 		}
 
+		if cursor != nil {
+			cursor.Close()
+		}
 		storeChannel <- result
 		close(storeChannel)
 	}()
@@ -76,7 +79,7 @@ func (self RethinkLicenseStore) Get(id string) StoreChannel {
 		result := StoreResult{}
 
 		var license model.LicenseRecord
-		cursor, err := rethink.Table("Licenses").Get(id).Run(self.rethink, runOpts)
+		cursor, err := rethink.Table("Licenses").Get(id).Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkLicenseStore.Get",
 				"store.sql_license.get.app_error", nil, "license_id="+id+", "+err.Error())
@@ -90,6 +93,9 @@ func (self RethinkLicenseStore) Get(id string) StoreChannel {
 			result.Data = license
 		}
 
+		if cursor != nil {
+			cursor.Close()
+		}
 		storeChannel <- result
 		close(storeChannel)
 

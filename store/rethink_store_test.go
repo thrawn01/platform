@@ -5,7 +5,7 @@ import "github.com/mattermost/platform/utils"
 func SetupRethink() {
 	if store == nil {
 		utils.LoadConfig("config.json")
-		utils.InitTranslations()
+		utils.InitTranslations(utils.Cfg.LocalizationSettings)
 		utils.ConfigureCmdLineLog()
 		store = NewRethinkStore()
 

@@ -6,7 +6,7 @@ import (
 )
 
 type RethinkWebhookStore struct {
-	rethink *rethink.Session
+	session *rethink.Session
 }
 
 func NewRethinkWebhookStore(session *rethink.Session) WebhookStore {
@@ -16,31 +16,31 @@ func NewRethinkWebhookStore(session *rethink.Session) WebhookStore {
 	return s
 }
 
-func (s RethinkWebhookStore) CreateTablesIfNotExists() {
-	err := rethink.TableCreate("IncomingWebhooks", rethink.TableCreateOpts{PrimaryKey: "Id"}).Exec(s.rethink, execOpts)
+func (self RethinkWebhookStore) CreateTablesIfNotExists() {
+	err := rethink.TableCreate("IncomingWebhooks", rethink.TableCreateOpts{PrimaryKey: "Id"}).Exec(self.session, execOpts)
 	handleCreateError("Teams.CreateTablesIfNotExists()", err)
-	err = rethink.TableCreate("OutgoingWebhooks").Exec(s.rethink, execOpts)
+	err = rethink.TableCreate("OutgoingWebhooks").Exec(self.session, execOpts)
 	handleCreateError("TeamMembers.CreateTablesIfNotExists()", err)
 }
 
-func (s RethinkWebhookStore) CreateIndexesIfNotExists() {
-	err := rethink.Table("IncomingWebhooks").IndexCreate("UserId").Exec(s.rethink, execOpts)
+func (self RethinkWebhookStore) CreateIndexesIfNotExists() {
+	err := rethink.Table("IncomingWebhooks").IndexCreate("UserId").Exec(self.session, execOpts)
 	handleCreateError("IncomingWebhooks.CreateIndexesIfNotExists().UserId.IndexCreate", err)
-	err = rethink.Table("IncomingWebhooks").IndexWait("UserId").Exec(s.rethink, execOpts)
+	err = rethink.Table("IncomingWebhooks").IndexWait("UserId").Exec(self.session, execOpts)
 	handleCreateError("IncomingWebhooks.CreateIndexesIfNotExists().UserId.IndexWait", err)
 
-	err = rethink.Table("IncomingWebhooks").IndexCreate("TeamId").Exec(s.rethink, execOpts)
+	err = rethink.Table("IncomingWebhooks").IndexCreate("TeamId").Exec(self.session, execOpts)
 	handleCreateError("IncomingWebhooks.CreateIndexesIfNotExists().TeamId.IndexCreate", err)
-	err = rethink.Table("IncomingWebhooks").IndexWait("TeamId").Exec(s.rethink, execOpts)
+	err = rethink.Table("IncomingWebhooks").IndexWait("TeamId").Exec(self.session, execOpts)
 	handleCreateError("IncomingWebhooks.CreateIndexesIfNotExists().TeamId.IndexWait", err)
 
-	err = rethink.Table("OutgoingWebhooks").IndexCreate("TeamId").Exec(s.rethink, execOpts)
+	err = rethink.Table("OutgoingWebhooks").IndexCreate("TeamId").Exec(self.session, execOpts)
 	handleCreateError("OutgoingWebhooks.CreateIndexesIfNotExists().TeamId.IndexCreate", err)
-	err = rethink.Table("OutgoingWebhooks").IndexWait("TeamId").Exec(s.rethink, execOpts)
+	err = rethink.Table("OutgoingWebhooks").IndexWait("TeamId").Exec(self.session, execOpts)
 	handleCreateError("OutgoingWebhooks.CreateIndexesIfNotExists().TeamId.IndexWait", err)
 }
 
-func (s RethinkWebhookStore) SaveIncoming(webhook *model.IncomingWebhook) StoreChannel {
+func (self RethinkWebhookStore) SaveIncoming(webhook *model.IncomingWebhook) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
@@ -61,7 +61,7 @@ func (s RethinkWebhookStore) SaveIncoming(webhook *model.IncomingWebhook) StoreC
 			return
 		}
 
-		changed, err := rethink.Table("IncomingWebhooks").Insert(webhook).RunWrite(s.rethink, runOpts)
+		changed, err := rethink.Table("IncomingWebhooks").Insert(webhook).RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkWebhookStore.SaveIncoming",
 				"store.rethink_webhooks.save_incoming.app_error", nil,
@@ -81,7 +81,7 @@ func (s RethinkWebhookStore) SaveIncoming(webhook *model.IncomingWebhook) StoreC
 	return storeChannel
 }
 
-func (s RethinkWebhookStore) GetIncoming(id string) StoreChannel {
+func (self RethinkWebhookStore) GetIncoming(id string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
@@ -91,7 +91,7 @@ func (s RethinkWebhookStore) GetIncoming(id string) StoreChannel {
 
 		cursor, err := rethink.Table("IncomingWebhooks").Filter(
 			rethink.Row.Field("Id").Eq(id).And(rethink.Row.Field("DeleteAt").Eq(0))).
-			Run(s.rethink, runOpts)
+			Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkWebhookStore.GetIncoming",
 				"store.rethink_webhooks.get_incoming.app_error", nil,
@@ -111,7 +111,7 @@ func (s RethinkWebhookStore) GetIncoming(id string) StoreChannel {
 	return storeChannel
 }
 
-func (s RethinkWebhookStore) DeleteIncoming(webhookId string, time int64) StoreChannel {
+func (self RethinkWebhookStore) DeleteIncoming(webhookId string, time int64) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
@@ -120,7 +120,7 @@ func (s RethinkWebhookStore) DeleteIncoming(webhookId string, time int64) StoreC
 		_, err := rethink.Table("IncomingWebhooks").Get(webhookId).Update(map[string]interface{}{
 			"DeleteAt": time,
 			"UpdateAt": time,
-		}).RunWrite(s.rethink, runOpts)
+		}).RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkWebhookStore.DeleteIncoming",
 				"store.rethink_webhooks.delete_incoming.app_error", nil,
@@ -134,7 +134,7 @@ func (s RethinkWebhookStore) DeleteIncoming(webhookId string, time int64) StoreC
 	return storeChannel
 }
 
-func (s RethinkWebhookStore) PermanentDeleteIncomingByUser(userId string) StoreChannel {
+func (self RethinkWebhookStore) PermanentDeleteIncomingByUser(userId string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
@@ -142,7 +142,7 @@ func (s RethinkWebhookStore) PermanentDeleteIncomingByUser(userId string) StoreC
 
 		_, err := rethink.Table("IncomingWebhooks").Filter(
 			rethink.Row.Field("UserId").Eq(userId)).Delete().
-			RunWrite(s.rethink, runOpts)
+			RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkWebhookStore.DeleteIncomingByUser",
 				"store.rethink_webhooks.permanent_delete_incoming_by_user.app_error", nil,
@@ -156,7 +156,7 @@ func (s RethinkWebhookStore) PermanentDeleteIncomingByUser(userId string) StoreC
 	return storeChannel
 }
 
-func (s RethinkWebhookStore) GetIncomingByTeam(teamId string) StoreChannel {
+func (self RethinkWebhookStore) GetIncomingByTeam(teamId string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
@@ -166,7 +166,7 @@ func (s RethinkWebhookStore) GetIncomingByTeam(teamId string) StoreChannel {
 
 		cursor, err := rethink.Table("IncomingWebhooks").Filter(
 			rethink.Row.Field("TeamId").Eq(teamId).And(rethink.Row.Field("DeleteAt").Eq(0))).
-			Run(s.rethink, runOpts)
+			Run(self.session, runOpts)
 
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkWebhookStore.GetIncomingByUser",
@@ -191,7 +191,7 @@ func (s RethinkWebhookStore) GetIncomingByTeam(teamId string) StoreChannel {
 	return storeChannel
 }
 
-func (s RethinkWebhookStore) GetIncomingByChannel(channelId string) StoreChannel {
+func (self RethinkWebhookStore) GetIncomingByChannel(channelId string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
@@ -201,7 +201,7 @@ func (s RethinkWebhookStore) GetIncomingByChannel(channelId string) StoreChannel
 
 		cursor, err := rethink.Table("IncomingWebhooks").Filter(
 			rethink.Row.Field("ChannelId").Eq(channelId).And(rethink.Row.Field("DeleteAt").Eq(0))).
-			Run(s.rethink, runOpts)
+			Run(self.session, runOpts)
 
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkWebhookStore.GetIncomingByChannel",
@@ -222,7 +222,7 @@ func (s RethinkWebhookStore) GetIncomingByChannel(channelId string) StoreChannel
 	return storeChannel
 }
 
-func (s RethinkWebhookStore) SaveOutgoing(webhook *model.OutgoingWebhook) StoreChannel {
+func (self RethinkWebhookStore) SaveOutgoing(webhook *model.OutgoingWebhook) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
@@ -243,7 +243,7 @@ func (s RethinkWebhookStore) SaveOutgoing(webhook *model.OutgoingWebhook) StoreC
 			return
 		}
 
-		changed, err := rethink.Table("OutgoingWebhooks").Insert(webhook).RunWrite(s.rethink, runOpts)
+		changed, err := rethink.Table("OutgoingWebhooks").Insert(webhook).RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkWebhookStore.SaveOutgoing",
 				"store.rethink_webhooks.save_outgoing.app_error", nil,
@@ -263,7 +263,7 @@ func (s RethinkWebhookStore) SaveOutgoing(webhook *model.OutgoingWebhook) StoreC
 	return storeChannel
 }
 
-func (s RethinkWebhookStore) GetOutgoing(id string) StoreChannel {
+func (self RethinkWebhookStore) GetOutgoing(id string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
@@ -273,7 +273,7 @@ func (s RethinkWebhookStore) GetOutgoing(id string) StoreChannel {
 
 		cursor, err := rethink.Table("OutgoingWebhooks").Filter(
 			rethink.Row.Field("Id").Eq(id).And(rethink.Row.Field("DeleteAt").Eq(0))).
-			Run(s.rethink, runOpts)
+			Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkWebhookStore.GetOutgoing",
 				"store.rethink_webhooks.get_outgoing.app_error", nil,
@@ -293,7 +293,7 @@ func (s RethinkWebhookStore) GetOutgoing(id string) StoreChannel {
 	return storeChannel
 }
 
-func (s RethinkWebhookStore) GetOutgoingByChannel(channelId string) StoreChannel {
+func (self RethinkWebhookStore) GetOutgoingByChannel(channelId string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
@@ -303,7 +303,7 @@ func (s RethinkWebhookStore) GetOutgoingByChannel(channelId string) StoreChannel
 
 		cursor, err := rethink.Table("OutgoingWebhooks").Filter(
 			rethink.Row.Field("ChannelId").Eq(channelId).And(rethink.Row.Field("DeleteAt").Eq(0))).
-			Run(s.rethink, runOpts)
+			Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkWebhookStore.GetOutgoingByChannel",
 				"store.rethink_webhooks.get_outgoing_by_channel.app_error", nil,
@@ -323,7 +323,7 @@ func (s RethinkWebhookStore) GetOutgoingByChannel(channelId string) StoreChannel
 	return storeChannel
 }
 
-func (s RethinkWebhookStore) GetOutgoingByTeam(teamId string) StoreChannel {
+func (self RethinkWebhookStore) GetOutgoingByTeam(teamId string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
@@ -333,7 +333,7 @@ func (s RethinkWebhookStore) GetOutgoingByTeam(teamId string) StoreChannel {
 
 		cursor, err := rethink.Table("OutgoingWebhooks").Filter(
 			rethink.Row.Field("TeamId").Eq(teamId).And(rethink.Row.Field("DeleteAt").Eq(0))).
-			Run(s.rethink, runOpts)
+			Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkWebhookStore.GetOutgoingByTeam",
 				"store.rethink_webhooks.get_outgoing_by_team.app_error", nil,
@@ -353,7 +353,7 @@ func (s RethinkWebhookStore) GetOutgoingByTeam(teamId string) StoreChannel {
 	return storeChannel
 }
 
-func (s RethinkWebhookStore) DeleteOutgoing(webhookId string, time int64) StoreChannel {
+func (self RethinkWebhookStore) DeleteOutgoing(webhookId string, time int64) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
@@ -362,7 +362,7 @@ func (s RethinkWebhookStore) DeleteOutgoing(webhookId string, time int64) StoreC
 		_, err := rethink.Table("OutgoingWebhooks").Get(webhookId).Update(map[string]interface{}{
 			"DeleteAt": time,
 			"UpdateAt": time,
-		}).RunWrite(s.rethink, runOpts)
+		}).RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkWebhookStore.DeleteOutgoing",
 				"store.rethink_webhooks.delete_outgoing.app_error", nil,
@@ -376,7 +376,7 @@ func (s RethinkWebhookStore) DeleteOutgoing(webhookId string, time int64) StoreC
 	return storeChannel
 }
 
-func (s RethinkWebhookStore) PermanentDeleteOutgoingByUser(userId string) StoreChannel {
+func (self RethinkWebhookStore) PermanentDeleteOutgoingByUser(userId string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
@@ -384,7 +384,7 @@ func (s RethinkWebhookStore) PermanentDeleteOutgoingByUser(userId string) StoreC
 
 		_, err := rethink.Table("OutgoingWebhooks").Filter(
 			rethink.Row.Field("CreatorId").Eq(userId)).Delete().
-			RunWrite(s.rethink, runOpts)
+			RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkWebhookStore.DeleteOutgoingByUser",
 				"store.rethink_webhooks.permanent_delete_outgoing_by_user.app_error", nil,
@@ -398,7 +398,7 @@ func (s RethinkWebhookStore) PermanentDeleteOutgoingByUser(userId string) StoreC
 	return storeChannel
 }
 
-func (s RethinkWebhookStore) UpdateOutgoing(hook *model.OutgoingWebhook) StoreChannel {
+func (self RethinkWebhookStore) UpdateOutgoing(hook *model.OutgoingWebhook) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
@@ -407,7 +407,7 @@ func (s RethinkWebhookStore) UpdateOutgoing(hook *model.OutgoingWebhook) StoreCh
 		hook.UpdateAt = model.GetMillis()
 
 		changed, err := rethink.Table("OutgoingWebhook").Get(hook.Id).
-			Update(hook).RunWrite(s.rethink, runOpts)
+			Update(hook).RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkWebhookStore.UpdateOutgoing",
 				"store.rethink_webhooks.update_outgoing.app_error", nil,
@@ -427,7 +427,7 @@ func (s RethinkWebhookStore) UpdateOutgoing(hook *model.OutgoingWebhook) StoreCh
 	return storeChannel
 }
 
-func (s RethinkWebhookStore) AnalyticsIncomingCount(teamId string) StoreChannel {
+func (self RethinkWebhookStore) AnalyticsIncomingCount(teamId string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	// SELECT COUNT(*)
@@ -442,7 +442,7 @@ func (s RethinkWebhookStore) AnalyticsIncomingCount(teamId string) StoreChannel 
 		}
 
 		var count int64
-		cursor, err := rethink.Table("IncomingWebhooks").Filter(filter).Count().Run(s.rethink, runOpts)
+		cursor, err := rethink.Table("IncomingWebhooks").Filter(filter).Count().Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkWebhookStore.AnalyticsIncomingCount",
 				"store.rethink_webhooks.analytics_incoming_count.app_error", nil,
@@ -462,7 +462,7 @@ func (s RethinkWebhookStore) AnalyticsIncomingCount(teamId string) StoreChannel 
 	return storeChannel
 }
 
-func (s RethinkWebhookStore) AnalyticsOutgoingCount(teamId string) StoreChannel {
+func (self RethinkWebhookStore) AnalyticsOutgoingCount(teamId string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	// SELECT COUNT(*) FROM OutgoingWebhooks WHERE DeleteAt = 0 AND TeamId = :TeamId
@@ -475,7 +475,7 @@ func (s RethinkWebhookStore) AnalyticsOutgoingCount(teamId string) StoreChannel 
 		}
 
 		var count int64
-		cursor, err := rethink.Table("OutgoingWebhooks").Filter(filter).Count().Run(s.rethink, runOpts)
+		cursor, err := rethink.Table("OutgoingWebhooks").Filter(filter).Count().Run(self.session, runOpts)
 
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkWebhookStore.AnalyticsOutgoingCount",

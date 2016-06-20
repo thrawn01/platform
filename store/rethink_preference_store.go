@@ -8,12 +8,8 @@ import (
 )
 
 type RethinkPreferenceStore struct {
-	rethink *rethink.Session
+	session *rethink.Session
 }
-
-const (
-	FEATURE_TOGGLE_PREFIX = "feature_enabled_"
-)
 
 func NewRethinkPreferenceStore(session *rethink.Session) PreferenceStore {
 	s := &RethinkPreferenceStore{session}
@@ -22,32 +18,32 @@ func NewRethinkPreferenceStore(session *rethink.Session) PreferenceStore {
 	return s
 }
 
-func (s RethinkPreferenceStore) UpgradeSchemaIfNeeded() {
+func (self RethinkPreferenceStore) UpgradeSchemaIfNeeded() {
 }
 
-func (s RethinkPreferenceStore) CreateTablesIfNotExists() {
-	err := rethink.TableCreate("Preferences", rethink.TableCreateOpts{PrimaryKey: "UserId"}).Exec(s.rethink, execOpts)
+func (self RethinkPreferenceStore) CreateTablesIfNotExists() {
+	err := rethink.TableCreate("Preferences", rethink.TableCreateOpts{PrimaryKey: "UserId"}).Exec(self.session, execOpts)
 	handleCreateError("Preferences.CreateTablesIfNotExists()", err)
 }
 
-func (s RethinkPreferenceStore) CreateIndexesIfNotExists() {
-	err := rethink.Table("Preferences").IndexCreate("UserId").Exec(s.rethink, execOpts)
+func (self RethinkPreferenceStore) CreateIndexesIfNotExists() {
+	err := rethink.Table("Preferences").IndexCreate("UserId").Exec(self.session, execOpts)
 	handleCreateError("Preferences.CreateIndexesIfNotExists().UserId.IndexCreate", err)
-	err = rethink.Table("Preferences").IndexWait("UserId").Exec(s.rethink, execOpts)
+	err = rethink.Table("Preferences").IndexWait("UserId").Exec(self.session, execOpts)
 	handleCreateError("Preferences.CreateIndexesIfNotExists().UserId.IndexWait", err)
 
-	/*err = rethink.Table("Preferences").IndexCreate("Category").Exec(s.rethink, execOpts)
+	/*err = rethink.Table("Preferences").IndexCreate("Category").Exec(self.rethink, execOpts)
 	handleCreateError("Preferences.CreateIndexesIfNotExists().Category.IndexCreate", err)
-	err = rethink.Table("Preferences").IndexWait("Category").Exec(s.rethink, execOpts)
+	err = rethink.Table("Preferences").IndexWait("Category").Exec(self.rethink, execOpts)
 	handleCreateError("Preferences.CreateIndexesIfNotExists().Category.IndexWait", err)
 
-	err = rethink.Table("Preferences").IndexCreate("Name").Exec(s.rethink, execOpts)
+	err = rethink.Table("Preferences").IndexCreate("Name").Exec(self.rethink, execOpts)
 	handleCreateError("Preferences.CreateIndexesIfNotExists().Name.IndexCreate", err)
-	err = rethink.Table("Preferences").IndexWait("Name").Exec(s.rethink, execOpts)
+	err = rethink.Table("Preferences").IndexWait("Name").Exec(self.rethink, execOpts)
 	handleCreateError("Preferences.CreateIndexesIfNotExists().Name.IndexWait", err)*/
 }
 
-func (s RethinkPreferenceStore) DeleteUnusedFeatures() {
+func (self RethinkPreferenceStore) DeleteUnusedFeatures() {
 	l4g.Debug(utils.T("store.rethink_preference.delete_unused_features.debug"))
 
 	rethink.Table("Preferences").Filter(rethink.Row.Field("Preferences").
@@ -55,17 +51,17 @@ func (s RethinkPreferenceStore) DeleteUnusedFeatures() {
 			return row.Field("Value").Eq(false).
 				And(rethink.Row.Field("Category").Eq(model.PREFERENCE_CATEGORY_ADVANCED_SETTINGS)).
 				And(rethink.Row.Field("Name").Match(FEATURE_TOGGLE_PREFIX))
-		})).Delete().Exec(s.rethink, runOpts)
+		})).Delete().Exec(self.session, execOpts)
 }
 
-func (s RethinkPreferenceStore) Save(preferences *model.Preferences) StoreChannel {
+func (self RethinkPreferenceStore) Save(preferences *model.Preferences) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
 		result := StoreResult{}
 
 		rethinkPref := model.RethinkPreferencesFromPreferences(preferences)
-		changed, err := rethink.Table("Preferences").Replace(rethinkPref).RunWrite(s.rethink, runOpts)
+		changed, err := rethink.Table("Preferences").Replace(rethinkPref).RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkPreferenceStore.save",
 				"store.rethink_preference.save.app_error", nil, err.Error())
@@ -81,7 +77,7 @@ func (s RethinkPreferenceStore) Save(preferences *model.Preferences) StoreChanne
 	return storeChannel
 }
 
-func (s RethinkPreferenceStore) Get(userId string, category string, name string) StoreChannel {
+func (self RethinkPreferenceStore) Get(userId string, category string, name string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
@@ -89,7 +85,7 @@ func (s RethinkPreferenceStore) Get(userId string, category string, name string)
 
 		var preference model.RethinkPreferences
 
-		cursor, err := rethink.Table("Preferences").Get(userId).Run(s.rethink, runOpts)
+		cursor, err := rethink.Table("Preferences").Get(userId).Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkPreferenceStore.Get",
 				"store.rethink_preference.get.app_error", nil, err.Error())
@@ -98,7 +94,7 @@ func (s RethinkPreferenceStore) Get(userId string, category string, name string)
 				"store.rethink_preference.get.cursor.app_error", nil, err.Error())
 		} else {
 			// TODO: thrawn - should we return an error if we couldn't find this preference?
-			result.Data = preference.GetPreference(name, category)
+			result.Data, _ = preference.GetPreference(name, category)
 		}
 
 		storeChannel <- result
@@ -108,7 +104,7 @@ func (s RethinkPreferenceStore) Get(userId string, category string, name string)
 	return storeChannel
 }
 
-func (s RethinkPreferenceStore) GetCategory(userId string, category string) StoreChannel {
+func (self RethinkPreferenceStore) GetCategory(userId string, category string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
@@ -116,7 +112,7 @@ func (s RethinkPreferenceStore) GetCategory(userId string, category string) Stor
 
 		var preference model.RethinkPreferences
 
-		cursor, err := rethink.Table("Preferences").Get(userId).Run(s.rethink, runOpts)
+		cursor, err := rethink.Table("Preferences").Get(userId).Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkPreferenceStore.GetCategory",
 				"store.rethink_preference.get.app_error", nil, err.Error())
@@ -135,14 +131,14 @@ func (s RethinkPreferenceStore) GetCategory(userId string, category string) Stor
 	return storeChannel
 }
 
-func (s RethinkPreferenceStore) GetAll(userId string) StoreChannel {
+func (self RethinkPreferenceStore) GetAll(userId string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
 		result := StoreResult{}
 
 		var preference model.RethinkPreferences
-		cursor, err := rethink.Table("Preferences").Get(userId).Run(s.rethink, runOpts)
+		cursor, err := rethink.Table("Preferences").Get(userId).Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkPreferenceStore.GetAll",
 				"store.rethink_preference.get.app_error", nil, err.Error())
@@ -161,13 +157,13 @@ func (s RethinkPreferenceStore) GetAll(userId string) StoreChannel {
 	return storeChannel
 }
 
-func (s RethinkPreferenceStore) PermanentDeleteByUser(userId string) StoreChannel {
+func (self RethinkPreferenceStore) PermanentDeleteByUser(userId string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
 		result := StoreResult{}
 
-		_, err := rethink.Table("Preferences").Get(userId).Delete().RunWrite(s.rethink, runOpts)
+		_, err := rethink.Table("Preferences").Get(userId).Delete().RunWrite(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkPreferenceStore.Delete",
 				"store.rethink_preference.permanent_delete_by_user.app_error", nil, err.Error())
@@ -180,14 +176,14 @@ func (s RethinkPreferenceStore) PermanentDeleteByUser(userId string) StoreChanne
 	return storeChannel
 }
 
-func (s RethinkPreferenceStore) IsFeatureEnabled(feature, userId string) StoreChannel {
+func (self RethinkPreferenceStore) IsFeatureEnabled(feature, userId string) StoreChannel {
 	storeChannel := make(StoreChannel)
 
 	go func() {
 		result := StoreResult{}
 
 		var preference model.RethinkPreferences
-		cursor, err := rethink.Table("Preferences").Get(userId).Run(s.rethink, runOpts)
+		cursor, err := rethink.Table("Preferences").Get(userId).Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkPreferenceStore.IsFeatureEnabled",
 				"store.rethink_preference.is_feature_enabled.app_error", nil, err.Error())
