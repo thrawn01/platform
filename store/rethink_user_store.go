@@ -225,7 +225,6 @@ func (self RethinkUserStore) Update(user *model.User, trustedUpdateData bool) St
 					return
 				}
 			}
-
 			changed, err := rethink.Table("Users").Get(user.Id).Update(user).RunWrite(self.session, runOpts)
 			if err != nil {
 				result.Err = model.NewLocAppError("RethinkUserStore.Update",
@@ -235,10 +234,10 @@ func (self RethinkUserStore) Update(user *model.User, trustedUpdateData bool) St
 				result.Err = model.NewLocAppError("RethinkUserStore.Update",
 					"store.sql_user.update.updating.notfound.app_error", nil,
 					"user_id="+user.Id+", "+err.Error())
-			} else if changed.Updated != 1 {
+			} else if changed.Replaced == 0 {
 				result.Err = model.NewLocAppError("RethinkUserStore.Update",
 					"store.sql_user.update.app_error", nil,
-					fmt.Sprintf("user_id=%v, count=%v", user.Id, changed.Updated))
+					fmt.Sprintf("user_id=%v, count=%v", user.Id, changed.Replaced))
 			} else {
 				result.Data = [2]*model.User{user, &oldUser}
 			}

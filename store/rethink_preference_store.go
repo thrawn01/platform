@@ -65,7 +65,7 @@ func (self RethinkPreferenceStore) Save(preferences *model.Preferences) StoreCha
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkPreferenceStore.save",
 				"store.rethink_preference.save.app_error", nil, err.Error())
-		} else if changed.Updated == 0 && changed.Inserted == 0 {
+		} else if changed.Replaced == 0 && changed.Inserted == 0 {
 			result.Err = model.NewLocAppError("RethinkPreferenceStore.save",
 				"store.rethink_preference.save.update_insert.app_error", nil, changed.FirstError)
 		}

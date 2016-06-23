@@ -126,7 +126,7 @@ func (self RethinkOAuthStore) UpdateApp(app *model.OAuthApp) StoreChannel {
 				result.Err = model.NewLocAppError("RethinkOAuthStore.UpdateApp",
 					"store.rethink_oauth.update_app.updating.app_error", nil,
 					"app_id="+app.Id+", "+err.Error())
-			} else if changed.Updated != 1 {
+			} else if changed.Replaced != 1 {
 				result.Err = model.NewLocAppError("RethinkOAuthStore.UpdateApp",
 					"store.rethink_oauth.update_app.not_updated.app_error", nil,
 					"app_id="+app.Id)

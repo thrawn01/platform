@@ -68,7 +68,7 @@ func (s RethinkRecoveryStore) SaveOrUpdate(recovery *model.PasswordRecovery) Sto
 			if err != nil {
 				result.Err = model.NewLocAppError("RethinkRecoveryStore.SaveOrUpdate",
 					"store.sql_recover.update.app_error", nil, err.Error())
-			} else if changed.Updated != 1 {
+			} else if changed.Replaced == 0 {
 				result.Err = model.NewLocAppError("RethinkRecoveryStore.SaveOrUpdate",
 					"store.sql_recover.update.not_found.app_error", nil, "")
 			}

@@ -735,13 +735,18 @@ func (self RethinkChannelStore) saveMemberT(member *model.ChannelMember) StoreRe
 	if result.Err = member.IsValid(); result.Err != nil {
 		return result
 	}
-	changed, err := rethink.Table("ChannelMembers").Get(member.Id).
-		Replace(member).RunWrite(self.session, runOpts)
+	changed, err := rethink.Table("ChannelMembers").Insert(member).RunWrite(self.session, runOpts)
 	if err != nil {
-		result.Err = model.NewLocAppError("RethinkChannelStore.SaveMember",
-			"store.rethink_channel.save_member.save.app_error", nil,
-			"channel_id="+member.ChannelId+", user_id="+member.UserId+", "+err.Error())
-	} else if changed.Inserted == 0 && changed.Replaced == 0 {
+		if rethink.IsConflictErr(err) {
+			result.Err = model.NewLocAppError("RethinkChannelStore.SaveMember",
+				"store.rethink_channel.save_member.save.conflict.app_error", nil,
+				"channel_id="+member.ChannelId+", user_id="+member.UserId+", "+err.Error())
+		} else {
+			result.Err = model.NewLocAppError("RethinkChannelStore.SaveMember",
+				"store.rethink_channel.save_member.save.app_error", nil,
+				"channel_id="+member.ChannelId+", user_id="+member.UserId+", "+err.Error())
+		}
+	} else if changed.Inserted == 0 {
 		result.Err = model.NewLocAppError("RethinkChannelStore.SaveMember",
 			"store.rethink_channel.save_member.save.not_inserted.app_error", nil,
 			"channel_id="+member.ChannelId+", user_id="+member.UserId+", "+changed.FirstError)
@@ -830,8 +835,8 @@ func (self RethinkChannelStore) GetMember(channelId string, userId string) Store
 
 		var member model.ChannelMember
 		cursor, err := rethink.Table("ChannelMembers").Filter(
-			rethink.Row.Field("ChannelId").Eq(member.ChannelId).
-				And(rethink.Row.Field("UserId").Eq(member.UserId))).
+			rethink.Row.Field("ChannelId").Eq(channelId).
+				And(rethink.Row.Field("UserId").Eq(userId))).
 			Run(self.session, runOpts)
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkChannelStore.GetMember",
@@ -841,11 +846,11 @@ func (self RethinkChannelStore) GetMember(channelId string, userId string) Store
 			if err == rethink.ErrEmptyResult {
 				result.Err = model.NewLocAppError("RethinkChannelStore.GetMember",
 					"store.rethink_channel.get_member.missing.app_error", nil,
-					"channel_id="+channelId+"user_id="+userId+","+err.Error())
+					"channel_id="+channelId+",user_id="+userId+","+err.Error())
 			} else {
 				result.Err = model.NewLocAppError("RethinkChannelStore.GetMember",
 					"store.rethink_channel.get_member.cursor.app_error", nil,
-					"channel_id="+channelId+"user_id="+userId+","+err.Error())
+					"channel_id="+channelId+",user_id="+userId+","+err.Error())
 			}
 		} else {
 			result.Data = member

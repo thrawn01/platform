@@ -176,7 +176,7 @@ func (self RethinkPostStore) Update(oldPost *model.Post, newMessage string, newH
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkPostStore.Update",
 				"store.rethink_post.update.app_error", nil, "id="+editPost.Id+", "+err.Error())
-		} else if changed.Updated == 0 {
+		} else if changed.Replaced == 0 {
 			result.Err = model.NewLocAppError("RethinkPostStore.Update",
 				"store.rethink_post.update.not_found.app_error",
 				nil, "id="+editPost.Id+", "+changed.FirstError)
@@ -196,7 +196,7 @@ func (self RethinkPostStore) Update(oldPost *model.Post, newMessage string, newH
 				result.Err = model.NewLocAppError("RethinkPostStore.Save",
 					"store.rethink_post.insert.oldpost.app_error", nil,
 					"id="+oldPost.Id+", "+err.Error())
-			} else if changed.Updated == 0 {
+			} else if changed.Replaced == 0 {
 				result.Err = model.NewLocAppError("RethinkPostStore.Save",
 					"store.rethink_post.insert.oldpost.app_error", nil,
 					"id="+oldPost.Id+", "+changed.FirstError)

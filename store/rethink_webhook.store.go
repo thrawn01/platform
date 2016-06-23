@@ -412,7 +412,7 @@ func (self RethinkWebhookStore) UpdateOutgoing(hook *model.OutgoingWebhook) Stor
 			result.Err = model.NewLocAppError("RethinkWebhookStore.UpdateOutgoing",
 				"store.rethink_webhooks.update_outgoing.app_error", nil,
 				"id="+hook.Id+", "+err.Error())
-		} else if changed.Updated != 1 {
+		} else if changed.Replaced != 1 {
 			result.Err = model.NewLocAppError("RethinkWebhookStore.UpdateOutgoing",
 				"store.rethink_webhooks.update_outgoing.app_error", nil,
 				"id="+hook.Id+", "+changed.FirstError)

@@ -154,9 +154,9 @@ func (self RethinkEmojiStore) Delete(id string, time int64) StoreChannel {
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkEmojiStore.Delete",
 				"store.rethink_emoji.delete.app_error", nil, "id="+id+", err="+err.Error())
-		} else if changed.Updated == 0 {
+		} else if changed.Replaced == 0 {
 			result.Err = model.NewLocAppError("RethinkEmojiStore.Delete",
-				"store.rethink_emoji.delete.no_results", nil, "id="+id+", err="+err.Error())
+				"store.rethink_emoji.delete.no_results", nil, "id="+id)
 		}
 
 		storeChannel <- result

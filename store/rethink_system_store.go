@@ -59,7 +59,7 @@ func (self RethinkSystemStore) SaveOrUpdate(system *model.System) StoreChannel {
 		if err != nil {
 			result.Err = model.NewLocAppError("RethinkSystemStore.SaveOrUpdate",
 				"store.rethink_system.save.get.app_error", nil, "")
-		} else if changed.Updated == 0 && changed.Inserted == 0 {
+		} else if changed.Replaced == 0 && changed.Inserted == 0 {
 			result.Err = model.NewLocAppError("RethinkSystemStore.SaveOrUpdate",
 				"store.rethink_system.save.get.not_inserted_or_updated.app_error", nil,
 				changed.FirstError)
